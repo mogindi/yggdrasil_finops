@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CloudKitty Project Cost Viewer</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <main class="container">
+    <h1>CloudKitty Project Cost Viewer</h1>
+    <form id="costForm" class="form-grid">
+      <label>Project ID <input id="projectId" required placeholder="OpenStack Project UUID" /></label>
+      <label>Start <input id="start" type="datetime-local" /></label>
+      <label>End <input id="end" type="datetime-local" /></label>
+      <label>Resolution
+        <select id="resolution">
+          <option value="hour">hour</option>
+          <option value="day" selected>day</option>
+          <option value="month">month</option>
+        </select>
+      </label>
+      <button type="submit">Fetch Costs</button>
+    </form>
+
+    <section class="summary">
+      <h2>Aggregate Cost (Now)</h2>
+      <p id="aggregate">--</p>
+      <p id="error" class="error"></p>
+    </section>
+
+    <section>
+      <h2>Cost Trend</h2>
+      <canvas id="costChart"></canvas>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
