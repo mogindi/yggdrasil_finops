@@ -5,12 +5,13 @@ import os
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError
 
 
 ROOT = Path(__file__).resolve().parent
+STATIC_ROOT = (ROOT / "static").resolve()
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -30,7 +31,11 @@ class CostHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/healthz":
             return self._json({"status": "ok"})
         if parsed.path.startswith("/static/"):
-            return self._serve_file(ROOT / parsed.path.lstrip("/"), self._content_type(parsed.path))
+            safe_static_path = self._resolve_static_path(parsed.path)
+            if safe_static_path is None:
+                self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
+                return
+            return self._serve_file(safe_static_path, self._content_type(parsed.path))
         if parsed.path.startswith("/api/projects/") and parsed.path.endswith("/costs"):
             parts = parsed.path.split("/")
             if len(parts) >= 5:
@@ -82,6 +87,16 @@ class CostHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    @staticmethod
+    def _resolve_static_path(request_path: str) -> Path | None:
+        relative = unquote(request_path.removeprefix("/static/"))
+        candidate = (STATIC_ROOT / relative).resolve()
+        try:
+            candidate.relative_to(STATIC_ROOT)
+        except ValueError:
+            return None
+        return candidate
 
     @staticmethod
     def _content_type(path: str) -> str:
