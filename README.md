@@ -69,11 +69,11 @@ curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs?start=2026-01-01T00:
 
 ## Configure default CloudKitty costs
 
-If CloudKitty hashmap rating is not preconfigured, run:
+If CloudKitty hashmap rating is not preconfigured, run (add `--debug` for step-by-step API call logging):
 
 ```bash
 source admin-openrc.sh
-python scripts/configure_cloudkitty_defaults.py
+python scripts/configure_cloudkitty_defaults.py --debug
 ```
 
 Defaults created (if missing):

@@ -8,12 +8,20 @@ Usage:
 """
 
 import json
+import argparse
 
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Configure default CloudKitty hashmap costs")
+    parser.add_argument("--debug", action="store_true", help="Enable detailed debug output for each step and API call")
+    return parser.parse_args()
+
+
 def main() -> int:
-    client = CloudKittyClient()
+    args = parse_args()
+    client = CloudKittyClient(debug=args.debug)
     try:
         client.authenticate()
         summary = client.ensure_default_hashmap_pricing()
