@@ -17,6 +17,18 @@ class CloudKittyError(RuntimeError):
     pass
 
 
+class CloudKittyApiError(CloudKittyError):
+    def __init__(self, message: str, status_code: int | None = None, url: str | None = None, body: str | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.url = url
+        self.body = body
+
+
+class ProjectNotFoundError(CloudKittyError):
+    pass
+
+
 class CloudKittyClient:
     def __init__(self, debug: bool = False) -> None:
         self.auth_url = os.environ.get("OS_AUTH_URL", "").rstrip("/")
@@ -90,10 +102,17 @@ class CloudKittyClient:
         except HTTPError as exc:
             raw = exc.read().decode("utf-8")
             self._debug(f"HTTP error: status={exc.code} url={url} body={raw}")
-            raise CloudKittyError(f"HTTP {exc.code} calling {url}: {raw}") from exc
+            raise CloudKittyApiError(f"HTTP {exc.code} calling {url}: {raw}", status_code=exc.code, url=url, body=raw) from exc
         except URLError as exc:
             self._debug(f"URL error: url={url} error={exc}")
             raise CloudKittyError(f"Failed calling {url}: {exc}") from exc
+
+    def _build_keystone_project_url(self, project_id: str) -> str:
+        parsed = parse.urlparse(self._token_url)
+        path = parsed.path
+        if path.endswith("/auth/tokens"):
+            path = path[: -len("/auth/tokens")]
+        return parse.urlunparse(parsed._replace(path=f"{path}/projects/{parse.quote(project_id)}"))
 
     def authenticate(self) -> None:
         self._debug("Starting authentication")
@@ -157,6 +176,17 @@ class CloudKittyClient:
         self._debug(f"CloudKitty API call: method={method} path={path}")
         _, _, payload = self._http_json(method, f"{self.endpoint}{path}", headers={"X-Auth-Token": self._token}, params=params, body=body)
         return payload
+
+    def ensure_project_exists(self, project_id: str) -> None:
+        if not self._token:
+            self.authenticate()
+        project_url = self._build_keystone_project_url(project_id)
+        try:
+            self._http_json("GET", project_url, headers={"X-Auth-Token": self._token})
+        except CloudKittyApiError as exc:
+            if exc.status_code == 404:
+                raise ProjectNotFoundError(f"Project '{project_id}' does not exist") from exc
+            raise CloudKittyError(f"Unable to verify project '{project_id}' existence") from exc
 
     @staticmethod
     def _sum_cost_values(node: Any) -> Decimal:
