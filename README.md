@@ -45,6 +45,12 @@ source admin-openrc.sh
 python app.py
 ```
 
+For very verbose logging (including every CloudKitty/Keystone API request), run:
+
+```bash
+python app.py --debug
+```
+
 Then browse to `http://localhost:8082`.
 
 ## API examples
