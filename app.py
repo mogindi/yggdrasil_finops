@@ -93,7 +93,7 @@ class CostHandler(SimpleHTTPRequestHandler):
 
 
 def run() -> None:
-    port = int(os.environ.get("PORT", "8080"))
+    port = int(os.environ.get("PORT", "8082"))
     server = ThreadingHTTPServer(("0.0.0.0", port), CostHandler)
     print(f"Serving on http://0.0.0.0:{port}")
     server.serve_forever()

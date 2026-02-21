@@ -45,26 +45,26 @@ source admin-openrc.sh
 python app.py
 ```
 
-Then browse to `http://localhost:8080`.
+Then browse to `http://localhost:8082`.
 
 ## API examples
 
 ### 1) Aggregate + time series
 
 ```bash
-curl "http://localhost:8080/api/projects/<PROJECT_ID>/costs?resolution=day&include_series=true"
+curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs?resolution=day&include_series=true"
 ```
 
 ### 2) Aggregate only
 
 ```bash
-curl "http://localhost:8080/api/projects/<PROJECT_ID>/costs?include_series=false"
+curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs?include_series=false"
 ```
 
 ### 3) Explicit date range
 
 ```bash
-curl "http://localhost:8080/api/projects/<PROJECT_ID>/costs?start=2026-01-01T00:00:00Z&end=2026-01-31T23:59:59Z&resolution=day"
+curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs?start=2026-01-01T00:00:00Z&end=2026-01-31T23:59:59Z&resolution=day"
 ```
 
 ## Configure default CloudKitty costs
