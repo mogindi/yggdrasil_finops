@@ -22,6 +22,7 @@ class CloudKittyClient:
         self.auth_url = os.environ.get("OS_AUTH_URL", "").rstrip("/")
         if not self.auth_url:
             raise OpenStackAuthError("OS_AUTH_URL is required")
+        self._token_url = self._build_keystone_tokens_url(self.auth_url)
         self.username = os.environ.get("OS_USERNAME")
         self.password = os.environ.get("OS_PASSWORD")
         self.user_domain = os.environ.get("OS_USER_DOMAIN_NAME", "Default")
@@ -41,6 +42,18 @@ class CloudKittyClient:
         self._token = ""
         self._cloudkitty_endpoint = os.environ.get("CLOUDKITTY_ENDPOINT", "")
         self._ssl_ctx = ssl.create_default_context() if self.verify else ssl._create_unverified_context()
+
+    @staticmethod
+    def _build_keystone_tokens_url(auth_url: str) -> str:
+        parsed = parse.urlparse(auth_url)
+        path = (parsed.path or "").rstrip("/")
+        if path.endswith("/auth/tokens"):
+            return parse.urlunparse(parsed)
+        if not path:
+            path = "/v3"
+        elif not path.endswith("/v3"):
+            path = f"{path}/v3"
+        return parse.urlunparse(parsed._replace(path=f"{path}/auth/tokens"))
 
     def _debug(self, message: str) -> None:
         if self.debug:
@@ -108,7 +121,8 @@ class CloudKittyClient:
                 "scope": {"project": scope_project},
             }
         }
-        status, headers, token_body = self._http_json("POST", f"{self.auth_url}/auth/tokens", body=payload)
+        self._debug(f"Authenticating against Keystone tokens URL={self._token_url}")
+        status, headers, token_body = self._http_json("POST", self._token_url, body=payload)
         if status not in (200, 201):
             raise OpenStackAuthError(f"Keystone auth failed with {status}")
         token = headers.get("X-Subject-Token") or headers.get("x-subject-token")
