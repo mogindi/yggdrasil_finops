@@ -193,7 +193,7 @@ class CloudKittyClient:
         total = Decimal("0")
         if isinstance(node, dict):
             for key, value in node.items():
-                if key.lower() in {"cost", "total", "price", "rated_cost"}:
+                if key.lower() in {"cost", "total", "price", "rated_cost", "rate"}:
                     try:
                         total += Decimal(str(value))
                         continue
@@ -210,42 +210,24 @@ class CloudKittyClient:
         now = dt.datetime.now(dt.timezone.utc)
         begin = (now - dt.timedelta(hours=24)).replace(microsecond=0).isoformat()
         end = now.replace(microsecond=0).isoformat()
-        for path, params in [
-            ("/v1/summary", {"tenant_id": project_id, "begin": begin, "end": end}),
-            ("/v1/report/summary", {"tenant_id": project_id, "begin": begin, "end": end}),
-            ("/v2/summary", {"project_id": project_id, "begin": begin, "end": end}),
-        ]:
-            try:
-                self._debug(f"Trying aggregate endpoint path={path}")
-                payload = self.request("GET", path, params=params)
-                value = self._sum_cost_values(payload)
-                if value != Decimal("0") or payload:
-                    self._debug(f"Aggregate endpoint path={path} returned value={value}")
-                    return float(value)
-            except CloudKittyError:
-                self._debug(f"Aggregate endpoint path={path} failed; trying next")
-                continue
-        raise CloudKittyError("Unable to compute aggregate cost")
+        path = "/v1/report/summary"
+        params = {"tenant_id": project_id, "begin": begin, "end": end}
+        self._debug(f"Trying aggregate endpoint path={path}")
+        payload = self.request("GET", path, params=params)
+        value = self._sum_cost_values(payload)
+        self._debug(f"Aggregate endpoint path={path} returned value={value}")
+        return float(value)
 
     def get_project_time_series(self, project_id: str, start: dt.datetime, end: dt.datetime, resolution: str = "day") -> list[dict[str, Any]]:
         self._debug(f"Fetching time series project_id={project_id} start={start} end={end} resolution={resolution}")
         start_iso = start.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
         end_iso = end.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
-        for path, params in [
-            ("/v1/summary", {"tenant_id": project_id, "begin": start_iso, "end": end_iso, "groupby": resolution}),
-            ("/v1/report/summary", {"tenant_id": project_id, "begin": start_iso, "end": end_iso, "groupby": resolution}),
-            ("/v2/summary", {"project_id": project_id, "begin": start_iso, "end": end_iso, "groupby": resolution}),
-        ]:
-            try:
-                self._debug(f"Trying time-series endpoint path={path}")
-                series = self._extract_series(self.request("GET", path, params=params))
-                if series:
-                    self._debug(f"Time-series endpoint path={path} returned {len(series)} points")
-                    return series
-            except CloudKittyError:
-                self._debug(f"Time-series endpoint path={path} failed; trying next")
-                continue
-        raise CloudKittyError("Unable to fetch time series data")
+        path = "/v1/report/summary"
+        params = {"tenant_id": project_id, "begin": start_iso, "end": end_iso, "groupby": resolution}
+        self._debug(f"Trying time-series endpoint path={path}")
+        series = self._extract_series(self.request("GET", path, params=params))
+        self._debug(f"Time-series endpoint path={path} returned {len(series)} points")
+        return series
 
     def _extract_series(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         series: list[dict[str, Any]] = []
@@ -254,6 +236,8 @@ class CloudKittyClient:
             if isinstance(node, dict):
                 if "begin" in node and "cost" in node:
                     series.append({"timestamp": node["begin"], "cost": float(node["cost"])})
+                if "begin" in node and "rate" in node:
+                    series.append({"timestamp": node["begin"], "cost": float(node["rate"])})
                 if "period_begin" in node and "rated_cost" in node:
                     series.append({"timestamp": node["period_begin"], "cost": float(node["rated_cost"])})
                 for value in node.values():
