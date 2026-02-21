@@ -8,7 +8,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError
+from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 
 
 ROOT = Path(__file__).resolve().parent
@@ -49,8 +49,11 @@ class CostHandler(SimpleHTTPRequestHandler):
 
         client = CloudKittyClient(debug=DEBUG_MODE)
         try:
+            client.ensure_project_exists(project_id)
             aggregate = client.get_project_aggregate_now(project_id)
             series = client.get_project_time_series(project_id, start, end, resolution) if include_series else []
+        except ProjectNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
         except (OpenStackAuthError, CloudKittyError) as exc:
             return self._json({"error": str(exc)}, status=502)
 
