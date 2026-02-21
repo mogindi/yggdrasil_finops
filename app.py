@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import os
+import argparse
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -11,6 +12,7 @@ from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthEr
 
 
 ROOT = Path(__file__).resolve().parent
+DEBUG_MODE = False
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -45,7 +47,7 @@ class CostHandler(SimpleHTTPRequestHandler):
         resolution = query.get("resolution", ["day"])[0]
         include_series = query.get("include_series", ["true"])[0].lower() != "false"
 
-        client = CloudKittyClient()
+        client = CloudKittyClient(debug=DEBUG_MODE)
         try:
             aggregate = client.get_project_aggregate_now(project_id)
             series = client.get_project_time_series(project_id, start, end, resolution) if include_series else []
@@ -93,9 +95,18 @@ class CostHandler(SimpleHTTPRequestHandler):
 
 
 def run() -> None:
-    port = int(os.environ.get("PORT", "8082"))
+    parser = argparse.ArgumentParser(description="CloudKitty project cost viewer")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8082")), help="Port to bind the HTTP server to")
+    parser.add_argument("--debug", action="store_true", help="Enable very verbose logging, including CloudKitty/Keystone API calls")
+    args = parser.parse_args()
+
+    global DEBUG_MODE
+    DEBUG_MODE = args.debug
+
+    port = args.port
     server = ThreadingHTTPServer(("0.0.0.0", port), CostHandler)
-    print(f"Serving on http://0.0.0.0:{port}")
+    mode = "debug" if DEBUG_MODE else "normal"
+    print(f"Serving on http://0.0.0.0:{port} ({mode} mode)")
     server.serve_forever()
 
 
