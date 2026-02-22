@@ -24,7 +24,7 @@ class ExistingProjectDataFailureClient:
     def ensure_project_exists(self, project_id):
         return None
 
-    def get_project_aggregate_now(self, project_id):
+    def get_project_aggregate_for_range(self, project_id, start, end):
         raise CloudKittyError("Unable to obtain data for project 'existing-project'")
 
 

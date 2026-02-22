@@ -5,8 +5,14 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 ## What this provides
 
 - `GET /api/projects/<project_id>/costs`
-  - Returns **aggregate project cost now**.
+  - Returns **aggregate project cost for the requested/default time range**.
   - Optionally returns a **time-series** for graphing.
+- `GET /api/projects/<project_id>/costs/last-month`
+  - Returns the same payload format as `/costs`.
+  - Uses the previous calendar month window in UTC (`YYYY-MM-01T00:00:00Z` to month end `23:59:59Z`).
+- `GET /api/projects/<project_id>/costs/<YYYY-MM>`
+  - Returns the same payload format as `/costs`.
+  - Uses the exact calendar month specified in UTC.
 - Web UI at `/` to query a project and render a line chart.
 - Script to preconfigure CloudKitty hashmap pricing defaults.
 
@@ -71,6 +77,18 @@ curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs?include_series=false
 
 ```bash
 curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs?start=2026-01-01T00:00:00Z&end=2026-01-31T23:59:59Z&resolution=day"
+```
+
+### 4) Previous calendar month
+
+```bash
+curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/last-month?resolution=day&include_series=true"
+```
+
+### 5) Specific calendar month
+
+```bash
+curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/2025-01?resolution=day&include_series=true"
 ```
 
 ## Configure default CloudKitty costs

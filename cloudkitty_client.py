@@ -206,12 +206,16 @@ class CloudKittyClient:
         return total
 
     def get_project_aggregate_now(self, project_id: str) -> float:
-        self._debug(f"Fetching aggregate cost for project_id={project_id}")
         now = dt.datetime.now(dt.timezone.utc)
-        begin = (now - dt.timedelta(hours=24)).replace(microsecond=0).isoformat()
-        end = now.replace(microsecond=0).isoformat()
+        begin = now - dt.timedelta(hours=24)
+        return self.get_project_aggregate_for_range(project_id, begin, now)
+
+    def get_project_aggregate_for_range(self, project_id: str, start: dt.datetime, end: dt.datetime) -> float:
+        self._debug(f"Fetching aggregate cost for project_id={project_id} start={start} end={end}")
+        begin = start.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
+        end_iso = end.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
         path = "/v1/report/summary"
-        params = {"tenant_id": project_id, "begin": begin, "end": end}
+        params = {"tenant_id": project_id, "begin": begin, "end": end_iso}
         self._debug(f"Trying aggregate endpoint path={path}")
         payload = self.request("GET", path, params=params)
         value = self._sum_cost_values(payload)
