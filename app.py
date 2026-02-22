@@ -18,7 +18,10 @@ DEBUG_MODE = False
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
     if not raw:
         return default
-    return dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
 
 
 def _last_month_bounds(now: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
@@ -36,6 +39,10 @@ def _month_bounds_utc(year: int, month: int) -> tuple[dt.datetime, dt.datetime]:
         next_month_start = dt.datetime(year, month + 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
     end = next_month_start - dt.timedelta(seconds=1)
     return start, end
+
+
+def _start_of_current_month_utc(now: dt.datetime) -> dt.datetime:
+    return now.astimezone(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
 class CostHandler(SimpleHTTPRequestHandler):
@@ -59,6 +66,8 @@ class CostHandler(SimpleHTTPRequestHandler):
                 project_id = parts[3]
                 if parts[5] == "last-month":
                     return self._project_costs_last_month(project_id, parse_qs(parsed.query))
+                if parts[5] == "monthly":
+                    return self._project_costs_monthly(project_id)
                 return self._project_costs_for_month(project_id, parts[5], parse_qs(parsed.query))
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -109,6 +118,36 @@ class CostHandler(SimpleHTTPRequestHandler):
         query_with_range["start"] = [start.isoformat()]
         query_with_range["end"] = [end.isoformat()]
         return self._project_costs(project_id, query_with_range)
+
+    def _project_costs_monthly(self, project_id: str):
+        now = dt.datetime.now(dt.timezone.utc)
+        current_month_start = _start_of_current_month_utc(now)
+        end = current_month_start - dt.timedelta(seconds=1)
+        start = dt.datetime(2026, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
+
+        client = CloudKittyClient(debug=DEBUG_MODE)
+        try:
+            client.ensure_project_exists(project_id)
+            series = client.get_project_time_series(project_id, start, end, "month")
+        except ProjectNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
+        except (OpenStackAuthError, CloudKittyError) as exc:
+            return self._json({"error": str(exc)}, status=502)
+
+        monthly_series = [point for point in series if _parse_date(point["timestamp"], end) < current_month_start]
+        aggregate = sum(point["cost"] for point in monthly_series)
+
+        return self._json(
+            {
+                "project_id": project_id,
+                "aggregate_cost_now": aggregate,
+                "currency": os.environ.get("CLOUDKITTY_CURRENCY", "USD"),
+                "time_series": monthly_series,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "resolution": "month",
+            }
+        )
 
     def _serve_file(self, path: Path, content_type: str):
         if not path.exists() or not path.is_file():

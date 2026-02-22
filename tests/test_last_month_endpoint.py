@@ -24,6 +24,14 @@ class RecordingClient:
 
     def get_project_time_series(self, project_id, start, end, resolution):
         self.__class__.series_calls.append((project_id, start, end, resolution))
+        if resolution == "month":
+            now = app.dt.datetime.now(app.dt.timezone.utc)
+            current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            previous_month_start = (current_month_start - app.dt.timedelta(seconds=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            return [
+                {"timestamp": previous_month_start.isoformat(), "cost": 5.0},
+                {"timestamp": current_month_start.isoformat(), "cost": 9.0},
+            ]
         return [{"timestamp": start.isoformat(), "cost": 1.0}, {"timestamp": end.isoformat(), "cost": 2.0}]
 
 
@@ -102,6 +110,26 @@ class LastMonthEndpointTests(unittest.TestCase):
 
         self.assertEqual(status, 400)
         self.assertEqual(body["error"], "Month must be in YYYY-MM format")
+
+    def test_monthly_endpoint_returns_past_months_only_with_single_series_call(self):
+        with patch("app.CloudKittyClient", RecordingClient):
+            status, body = self._request("/api/projects/proj-5/costs/monthly")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["project_id"], "proj-5")
+        self.assertEqual(body["resolution"], "month")
+        self.assertEqual(body["aggregate_cost_now"], 5.0)
+        self.assertEqual(len(body["time_series"]), 1)
+
+        self.assertEqual(len(RecordingClient.aggregate_calls), 0)
+        self.assertEqual(len(RecordingClient.series_calls), 1)
+        _, start, end, resolution = RecordingClient.series_calls[0]
+        self.assertEqual(resolution, "month")
+        self.assertEqual(start.isoformat(), "1970-01-01T00:00:00+00:00")
+        self.assertEqual((end + app.dt.timedelta(seconds=1)).day, 1)
+        self.assertEqual((end + app.dt.timedelta(seconds=1)).hour, 0)
+        self.assertEqual((end + app.dt.timedelta(seconds=1)).minute, 0)
+        self.assertEqual((end + app.dt.timedelta(seconds=1)).second, 0)
 
 
 if __name__ == "__main__":
