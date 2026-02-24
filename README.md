@@ -102,6 +102,141 @@ curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/monthly"
 ```
 
 
+## End-to-end example for `proj_123`
+
+This is a practical lifecycle walkthrough for a single tenant project (`proj_123`): onboarding, operating for a couple of months, then closing the account.
+
+### 1) Onboarding month (`2026-01`)
+
+1. Create OpenSearch payment indices and mappings for the month:
+
+```bash
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup?month=2026-01"
+```
+
+2. Record an initial customer deposit/payment event:
+
+```bash
+curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_onboard_001?month=2026-01" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "invoice_id": "inv_2026_01",
+    "amount": 150.00,
+    "currency": "USD",
+    "direction": "inbound",
+    "status": "succeeded",
+    "paid_at": "2026-01-03T09:30:00Z",
+    "metadata": {"note": "onboarding credit"}
+  }'
+```
+
+3. Store the starting balance view:
+
+```bash
+curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/balance" \
+  -H "Content-Type: application/json" \
+  -d '{"currency":"USD","paid_total":150.00,"refunded_total":0.00,"net_paid":150.00}'
+```
+
+4. Check first-month cost trend:
+
+```bash
+curl "http://localhost:8082/api/projects/proj_123/costs/2026-01?resolution=day&include_series=true"
+```
+
+### 2) Active usage over a couple of months (`2026-02`, `2026-03`)
+
+1. Prepare next month index:
+
+```bash
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup?month=2026-02"
+```
+
+2. Bulk ingest recurring payments for February:
+
+```bash
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/events/bulk?month=2026-02" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "event_id": "evt_feb_001",
+        "project_id": "proj_123",
+        "invoice_id": "inv_2026_02",
+        "amount": 90.00,
+        "currency": "USD",
+        "direction": "inbound",
+        "status": "succeeded",
+        "paid_at": "2026-02-05T08:00:00Z"
+      },
+      {
+        "event_id": "evt_mar_001",
+        "project_id": "proj_123",
+        "invoice_id": "inv_2026_03",
+        "amount": 95.00,
+        "currency": "USD",
+        "direction": "inbound",
+        "status": "succeeded",
+        "paid_at": "2026-03-05T08:00:00Z"
+      }
+    ]
+  }'
+```
+
+3. Inspect monthly cloud spend history:
+
+```bash
+curl "http://localhost:8082/api/projects/proj_123/costs/monthly"
+```
+
+4. Compare payments received:
+
+```bash
+curl "http://localhost:8082/api/projects/proj_123/payments/total-paid"
+```
+
+### 3) Closing account (deletion workflow)
+
+There is no hard-delete endpoint for payment documents in this service. A practical close-out flow is:
+
+1. Final billing check for the last full month:
+
+```bash
+curl "http://localhost:8082/api/projects/proj_123/costs/last-month?resolution=day&include_series=true"
+```
+
+2. Add a final refund/adjustment event if needed:
+
+```bash
+curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_close_001?month=2026-03" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "invoice_id": "inv_close_2026_03",
+    "amount": 25.00,
+    "currency": "USD",
+    "direction": "outbound",
+    "status": "succeeded",
+    "paid_at": "2026-03-28T15:00:00Z",
+    "metadata": {"reason": "account closure refund"}
+  }'
+```
+
+3. Set the project balance to settled/closed (for example net `0`):
+
+```bash
+curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/balance" \
+  -H "Content-Type: application/json" \
+  -d '{"currency":"USD","paid_total":335.00,"refunded_total":335.00,"net_paid":0.00}'
+```
+
+4. Verify closed balance:
+
+```bash
+curl "http://localhost:8082/api/projects/proj_123/payments/balance"
+```
+
 ## OpenSearch payment storage per project
 
 The service now exposes OpenSearch-backed payment endpoints under `/api/projects/<PROJECT_ID>/payments` and maps the template field to `project_id`.
