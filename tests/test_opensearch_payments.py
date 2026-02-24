@@ -68,6 +68,16 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertTrue(any("OpenSearch API call" in msg for msg in debug_messages))
         self.assertTrue(any("OpenSearch API response" in msg for msg in debug_messages))
 
+
+    def test_payments_template_uses_compatible_metadata_mapping(self):
+        client = OpenSearchClient()
+        with patch.object(client, "_http_json", return_value={"acknowledged": True}) as http_mock:
+            client.create_payments_template()
+
+        body = http_mock.call_args.args[2]
+        metadata_mapping = body["template"]["mappings"]["properties"]["metadata"]
+        self.assertEqual(metadata_mapping, {"type": "object", "enabled": False})
+
     def test_put_payment_event_injects_project_id(self):
         FakeOpenSearchClient.upsert_calls = []
         with patch("app.OpenSearchClient", FakeOpenSearchClient):

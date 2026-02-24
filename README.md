@@ -108,6 +108,7 @@ The service now exposes OpenSearch-backed payment endpoints under `/api/projects
 
 - `POST /api/projects/<PROJECT_ID>/payments/setup?month=YYYY-MM`
   - Creates `payments_template`, `payments-YYYY-MM`, and `project-balances` indices.
+  - Template compatibility note: `metadata` is stored as a non-indexed object (`enabled: false`) so setup works on older OpenSearch clusters that do not support `flattened` mappings.
 - `PUT /api/projects/<PROJECT_ID>/payments/events/<EVENT_ID>?month=YYYY-MM`
   - Upserts a payment event using event id as document `_id` (idempotent).
 - `POST /api/projects/<PROJECT_ID>/payments/events/bulk?month=YYYY-MM`
@@ -133,6 +134,8 @@ Example setup call:
 ```bash
 curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup?month=2026-02"
 ```
+
+If setup still fails, verify `OPENSEARCH_URL` points to the expected cluster and check your OpenSearch version supports composable index templates (`/_index_template`).
 
 ## Configure default CloudKitty costs
 
