@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime as dt
+import html
 import json
 import os
 import argparse
@@ -74,6 +75,10 @@ class CostHandler(SimpleHTTPRequestHandler):
                 if parts[5] == "monthly":
                     return self._project_costs_monthly(project_id)
                 return self._project_costs_for_month(project_id, parts[5], parse_qs(parsed.query))
+            if len(parts) == 7 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "costs":
+                project_id = parts[3]
+                if parts[5] == "monthly" and parts[6] == "graph":
+                    return self._project_costs_monthly_graph(project_id)
 
             if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
                 project_id = parts[3]
@@ -255,6 +260,85 @@ class CostHandler(SimpleHTTPRequestHandler):
             }
         )
 
+    def _project_costs_monthly_graph(self, project_id: str):
+        now = dt.datetime.now(dt.timezone.utc)
+        current_month_start = _start_of_current_month_utc(now)
+        end = current_month_start - dt.timedelta(seconds=1)
+        start = dt.datetime(1970, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
+
+        client = CloudKittyClient(debug=DEBUG_MODE)
+        try:
+            client.ensure_project_exists(project_id)
+            series = client.get_project_time_series(project_id, start, end, "month")
+        except ProjectNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
+        except (OpenStackAuthError, CloudKittyError) as exc:
+            return self._json({"error": str(exc)}, status=502)
+
+        monthly_series = [point for point in series if _parse_date(point["timestamp"], end) < current_month_start]
+        labels = [dt.datetime.fromisoformat(point["timestamp"].replace("Z", "+00:00")).strftime("%Y-%m") for point in monthly_series]
+        costs = [float(point["cost"]) for point in monthly_series]
+        max_cost = max(costs) if costs else 1.0
+
+        chart_width = 820
+        chart_height = 320
+        left_pad = 55
+        bottom_pad = 35
+        plot_width = chart_width - left_pad - 20
+        plot_height = chart_height - 20 - bottom_pad
+
+        points = []
+        if costs:
+            for idx, cost in enumerate(costs):
+                x = left_pad + (plot_width * idx / max(len(costs) - 1, 1))
+                y = 20 + (plot_height * (1 - (cost / max_cost if max_cost > 0 else 0)))
+                points.append((x, y, labels[idx], cost))
+
+        polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y, _, _ in points)
+        dots = "".join(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="#2563eb"><title>{label}: {cost:.2f}</title></circle>'
+            for x, y, label, cost in points
+        )
+        x_labels = "".join(
+            f'<text x="{x:.1f}" y="{chart_height - 10}" text-anchor="middle" font-size="11" fill="#4b5563">{html.escape(label)}</text>'
+            for x, _, label, _ in points
+        )
+        y_labels = "".join(
+            f'<text x="6" y="{20 + (plot_height * (i / 4)) + 4:.1f}" font-size="11" fill="#4b5563">{max_cost * (1 - i / 4):.2f}</text>'
+            for i in range(5)
+        )
+
+        page = f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>Monthly Cost Graph - {html.escape(project_id)}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; color: #111827; }}
+    .card {{ border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; max-width: 880px; }}
+    .subtitle {{ color: #4b5563; font-size: 0.95rem; margin-top: -8px; }}
+  </style>
+</head>
+<body>
+  <div class=\"card\">
+    <h1>Monthly Cost History</h1>
+    <p class=\"subtitle\">Project: <code>{html.escape(project_id)}</code> • Currency: {html.escape(os.environ.get('CLOUDKITTY_CURRENCY', 'USD'))}</p>
+    <svg width=\"{chart_width}\" height=\"{chart_height}\" role=\"img\" aria-label=\"Monthly cloud cost graph\">
+      <rect x=\"0\" y=\"0\" width=\"{chart_width}\" height=\"{chart_height}\" fill=\"white\" />
+      <line x1=\"{left_pad}\" y1=\"20\" x2=\"{left_pad}\" y2=\"{chart_height - bottom_pad}\" stroke=\"#9ca3af\" />
+      <line x1=\"{left_pad}\" y1=\"{chart_height - bottom_pad}\" x2=\"{chart_width - 20}\" y2=\"{chart_height - bottom_pad}\" stroke=\"#9ca3af\" />
+      {y_labels}
+      <polyline points=\"{polyline}\" fill=\"none\" stroke=\"#2563eb\" stroke-width=\"2\" />
+      {dots}
+      {x_labels}
+    </svg>
+    <p>Total months: {len(monthly_series)}</p>
+  </div>
+</body>
+</html>"""
+        return self._html(page)
+
     def _serve_file(self, path: Path, content_type: str):
         if not path.exists() or not path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND, "File not found")
@@ -270,6 +354,14 @@ class CostHandler(SimpleHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _html(self, payload: str, status: int = 200):
+        body = payload.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

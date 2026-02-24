@@ -56,6 +56,23 @@ class LastMonthEndpointTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def _request_raw(self, path):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), app.CostHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8")
+            content_type = resp.getheader("Content-Type")
+            conn.close()
+            return resp.status, content_type, body
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
     def test_last_month_endpoint_sets_previous_month_range(self):
         with patch("app.CloudKittyClient", RecordingClient):
             status, body = self._request("/api/projects/proj-1/costs/last-month")
@@ -130,6 +147,16 @@ class LastMonthEndpointTests(unittest.TestCase):
         self.assertEqual((end + app.dt.timedelta(seconds=1)).hour, 0)
         self.assertEqual((end + app.dt.timedelta(seconds=1)).minute, 0)
         self.assertEqual((end + app.dt.timedelta(seconds=1)).second, 0)
+
+    def test_monthly_graph_endpoint_returns_html_page(self):
+        with patch("app.CloudKittyClient", RecordingClient):
+            status, content_type, body = self._request_raw("/api/projects/proj-6/costs/monthly/graph")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(content_type, "text/html; charset=utf-8")
+        self.assertIn("<svg", body)
+        self.assertIn("Monthly Cost History", body)
+        self.assertIn("proj-6", body)
 
 
 if __name__ == "__main__":
