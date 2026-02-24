@@ -16,6 +16,8 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 - `GET /api/projects/<project_id>/costs/monthly`
   - Returns one data point per month for all past months, excluding the current month (UTC).
   - Optimized for graphing with a single CloudKitty grouped query (`resolution=month` in response).
+- `GET /api/projects/<project_id>/costs/monthly/graph`
+  - Returns an HTML page with an inline SVG chart showing monthly cost usage over time.
 - Web UI at `/` to query a project and render a line chart.
 - Script to preconfigure CloudKitty hashmap pricing defaults.
 
@@ -99,6 +101,12 @@ curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/2025-01?resolution=d
 
 ```bash
 curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/monthly"
+```
+
+### 7) Monthly history graph (HTML page)
+
+```bash
+curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/monthly/graph"
 ```
 
 
