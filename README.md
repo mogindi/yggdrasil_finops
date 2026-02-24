@@ -45,6 +45,7 @@ The service uses the standard OpenStack variables (from `openrc`):
   - `OS_INTERFACE` (default: `public`)
   - `CLOUDKITTY_ENDPOINT` (override endpoint discovery)
   - `CLOUDKITTY_CURRENCY` (default response currency: `USD`)
+  - `OPENSEARCH_URL` (OpenSearch base URL, default: `http://localhost:9200`)
   - `OS_VERIFY=false` to disable TLS verification (not recommended)
 
 ## Run the app
@@ -98,6 +99,39 @@ curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/2025-01?resolution=d
 
 ```bash
 curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/monthly"
+```
+
+
+## OpenSearch payment storage per project
+
+The service now exposes OpenSearch-backed payment endpoints under `/api/projects/<PROJECT_ID>/payments` and maps the template field to `project_id`.
+
+- `POST /api/projects/<PROJECT_ID>/payments/setup?month=YYYY-MM`
+  - Creates `payments_template`, `payments-YYYY-MM`, and `project-balances` indices.
+- `PUT /api/projects/<PROJECT_ID>/payments/events/<EVENT_ID>?month=YYYY-MM`
+  - Upserts a payment event using event id as document `_id` (idempotent).
+- `POST /api/projects/<PROJECT_ID>/payments/events/bulk?month=YYYY-MM`
+  - Bulk ingests events (`{"events": [...]}`).
+- `GET /api/projects/<PROJECT_ID>/payments/events/<EVENT_ID>?month=YYYY-MM`
+  - Fetches a payment event by id.
+- `GET /api/projects/<PROJECT_ID>/payments`
+  - Lists payments for the project sorted by `paid_at desc`.
+- `GET /api/projects/<PROJECT_ID>/payments/invoices/<INVOICE_ID>`
+  - Lists successful invoice payments for the project.
+- `GET /api/projects/<PROJECT_ID>/payments/total-paid`
+  - Returns OpenSearch sum aggregation for successful inbound payments.
+- `PUT /api/projects/<PROJECT_ID>/payments/balance`
+  - Upserts a current balance doc (`paid_total`, `refunded_total`, `net_paid`, `currency`).
+- `GET /api/projects/<PROJECT_ID>/payments/balance`
+  - Reads current balance doc.
+- `GET /api/projects/<PROJECT_ID>/payments/mapping?month=YYYY-MM`
+- `GET /api/projects/<PROJECT_ID>/payments/settings?month=YYYY-MM`
+- `POST /api/projects/<PROJECT_ID>/payments/refresh?month=YYYY-MM`
+
+Example setup call:
+
+```bash
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup?month=2026-02"
 ```
 
 ## Configure default CloudKitty costs
