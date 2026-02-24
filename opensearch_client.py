@@ -93,7 +93,10 @@ class OpenSearchClient:
                         "status": {"type": "keyword"},
                         "paid_at": {"type": "date"},
                         "ingested_at": {"type": "date"},
-                        "metadata": {"type": "flattened"},
+                        # `flattened` is not available on some OpenSearch/Elasticsearch
+                        # variants used in on-prem environments. Store arbitrary metadata
+                        # without indexing it to keep setup compatible.
+                        "metadata": {"type": "object", "enabled": False},
                     },
                 },
             },
