@@ -103,7 +103,21 @@ class CostHandler(SimpleHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
+    def _ensure_cloudkitty_project_exists(self, project_id: str):
+        client = CloudKittyClient(debug=DEBUG_MODE)
+        try:
+            client.ensure_project_exists(project_id)
+        except ProjectNotFoundError as exc:
+            self._json({"error": str(exc)}, status=404)
+            return False
+        except (OpenStackAuthError, CloudKittyError) as exc:
+            self._json({"error": str(exc)}, status=502)
+            return False
+        return True
+
     def _project_payments_get(self, project_id: str, parts: list[str], query: dict[str, list[str]]):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
         client = OpenSearchClient(debug=DEBUG_MODE)
         year_month = query.get("month", [_default_year_month()])[0]
         try:
@@ -128,6 +142,8 @@ class CostHandler(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def _project_payments_post(self, project_id: str, parts: list[str], query: dict[str, list[str]]):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
         client = OpenSearchClient(debug=DEBUG_MODE)
         year_month = query.get("month", [_default_year_month()])[0]
         try:
@@ -152,6 +168,8 @@ class CostHandler(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def _project_payments_put(self, project_id: str, parts: list[str], query: dict[str, list[str]]):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
         client = OpenSearchClient(debug=DEBUG_MODE)
         year_month = query.get("month", [_default_year_month()])[0]
         try:

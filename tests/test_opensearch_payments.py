@@ -6,7 +6,17 @@ from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 
 import app
-from opensearch_client import OpenSearchClient
+from cloudkitty_client import ProjectNotFoundError
+from opensearch_client import OpenSearchApiError, OpenSearchClient
+
+
+class FakeCloudKittyClient:
+    def __init__(self, debug=False):
+        pass
+
+    def ensure_project_exists(self, project_id):
+        if project_id == "missing-project":
+            raise ProjectNotFoundError(f"Project '{project_id}' does not exist")
 
 
 class FakeOpenSearchClient:
@@ -14,6 +24,9 @@ class FakeOpenSearchClient:
 
     def __init__(self, debug=False):
         self.endpoint = "http://fake-opensearch:9200"
+
+    def search_project_payments(self, project_id, size=25):
+        return {"hits": {"hits": []}}
 
     def upsert_payment_event(self, year_month, event_id, document):
         self.__class__.upsert_calls.append((year_month, event_id, document))
@@ -44,7 +57,6 @@ class OpenSearchPaymentsTests(unittest.TestCase):
             client = OpenSearchClient()
         self.assertEqual(client.endpoint, "https://os.example:9443")
 
-
     def test_debug_logs_opensearch_api_calls(self):
         client = OpenSearchClient(debug=True)
 
@@ -68,7 +80,6 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertTrue(any("OpenSearch API call" in msg for msg in debug_messages))
         self.assertTrue(any("OpenSearch API response" in msg for msg in debug_messages))
 
-
     def test_payments_template_uses_compatible_metadata_mapping(self):
         client = OpenSearchClient()
         with patch.object(client, "_http_json", return_value={"acknowledged": True}) as http_mock:
@@ -78,9 +89,29 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         metadata_mapping = body["template"]["mappings"]["properties"]["metadata"]
         self.assertEqual(metadata_mapping, {"type": "object", "enabled": False})
 
+    def test_create_payments_index_is_idempotent_when_index_exists(self):
+        client = OpenSearchClient()
+        exc_body = json.dumps(
+            {
+                "error": {
+                    "type": "resource_already_exists_exception",
+                    "root_cause": [{"type": "resource_already_exists_exception"}],
+                }
+            }
+        )
+        with patch.object(
+            client,
+            "_http_json",
+            side_effect=OpenSearchApiError("OpenSearch request failed (400)", status_code=400, body=exc_body),
+        ):
+            payload = client.create_payments_index("2026-02")
+
+        self.assertTrue(payload["acknowledged"])
+        self.assertTrue(payload["already_exists"])
+
     def test_put_payment_event_injects_project_id(self):
         FakeOpenSearchClient.upsert_calls = []
-        with patch("app.OpenSearchClient", FakeOpenSearchClient):
+        with patch("app.OpenSearchClient", FakeOpenSearchClient), patch("app.CloudKittyClient", FakeCloudKittyClient):
             status, body = self._request(
                 "PUT",
                 "/api/projects/proj-123/payments/events/evt_1?month=2026-02",
@@ -93,6 +124,13 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertEqual(year_month, "2026-02")
         self.assertEqual(event_id, "evt_1")
         self.assertEqual(doc["project_id"], "proj-123")
+
+    def test_payments_endpoints_return_404_when_cloudkitty_project_is_missing(self):
+        with patch("app.OpenSearchClient", FakeOpenSearchClient), patch("app.CloudKittyClient", FakeCloudKittyClient):
+            status, body = self._request("GET", "/api/projects/missing-project/payments")
+
+        self.assertEqual(status, 404)
+        self.assertIn("does not exist", body["error"])
 
 
 if __name__ == "__main__":

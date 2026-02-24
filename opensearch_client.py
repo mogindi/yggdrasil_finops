@@ -74,6 +74,20 @@ class OpenSearchClient:
             self._debug(f"OpenSearch connection error: method=POST url={url} reason={exc.reason}")
             raise OpenSearchError(f"Failed to connect to OpenSearch at {self.endpoint}: {exc.reason}") from exc
 
+    @staticmethod
+    def _is_resource_already_exists(exc: OpenSearchApiError) -> bool:
+        if exc.status_code != 400 or not exc.body:
+            return False
+        try:
+            payload = json.loads(exc.body)
+        except json.JSONDecodeError:
+            return False
+        err = payload.get("error", {})
+        err_type = err.get("type")
+        root_causes = err.get("root_cause", [])
+        has_root_cause = any(cause.get("type") == "resource_already_exists_exception" for cause in root_causes)
+        return err_type == "resource_already_exists_exception" or has_root_cause
+
     def create_payments_template(self) -> dict[str, Any]:
         body = {
             "index_patterns": ["payments-*"],
@@ -104,7 +118,12 @@ class OpenSearchClient:
         return self._http_json("PUT", "/_index_template/payments_template", body)
 
     def create_payments_index(self, year_month: str) -> dict[str, Any]:
-        return self._http_json("PUT", f"/payments-{year_month}")
+        try:
+            return self._http_json("PUT", f"/payments-{year_month}")
+        except OpenSearchApiError as exc:
+            if self._is_resource_already_exists(exc):
+                return {"acknowledged": True, "already_exists": True, "index": f"payments-{year_month}"}
+            raise
 
     def create_balances_index(self) -> dict[str, Any]:
         body = {
@@ -121,7 +140,12 @@ class OpenSearchClient:
                 },
             },
         }
-        return self._http_json("PUT", "/project-balances", body)
+        try:
+            return self._http_json("PUT", "/project-balances", body)
+        except OpenSearchApiError as exc:
+            if self._is_resource_already_exists(exc):
+                return {"acknowledged": True, "already_exists": True, "index": "project-balances"}
+            raise
 
     def upsert_payment_event(self, year_month: str, event_id: str, document: dict[str, Any]) -> dict[str, Any]:
         return self._http_json("PUT", f"/payments-{year_month}/_doc/{parse.quote(event_id)}", document)
