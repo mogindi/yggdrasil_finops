@@ -337,11 +337,32 @@ source admin-openrc.sh
 python scripts/configure_cloudkitty_defaults.py --debug
 ```
 
-Defaults created (if missing):
+The script supports configurable pricing through `--pricing-config`:
 
-- `instance` service mappings: `small=0.03`, `medium=0.07`, `large=0.12`
-- `volume` service mappings: `standard=0.10`, `ssd=0.18`
-- `network.bw.out` service mappings: `default=0.02`
+```bash
+python scripts/configure_cloudkitty_defaults.py --pricing-config ./cloudkitty-pricing.json
+```
+
+`cloudkitty-pricing.json` format:
+
+```json
+{
+  "instance": [
+    {"value": "small", "cost": 0.025},
+    {"value": "medium", "cost": 0.06},
+    {"value": "large", "cost": 0.10}
+  ],
+  "volume": [
+    {"value": "standard", "cost": 0.08},
+    {"value": "ssd", "cost": 0.15}
+  ],
+  "network.bw.out": []
+}
+```
+
+Default placeholders are intentionally set slightly cheaper than Azure list pricing for compute/storage, and networking egress is explicitly left empty (`[]`).
+
+Before applying rates, the script also checks OpenStack flavors (`openstack flavor list`) and warns if any existing flavor name matches an `instance` mapping value that will be rated.
 
 ## Notes
 

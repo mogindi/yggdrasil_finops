@@ -58,6 +58,33 @@ class CloudKittyClientParsingTests(unittest.TestCase):
 
         self.assertEqual(created_at, dt.datetime(2026, 1, 15, 5, 0, tzinfo=dt.timezone.utc))
 
+    def test_default_hashmap_pricing_leaves_network_egress_unpriced(self):
+        client = CloudKittyClient()
+
+        with patch.object(client, "_get_or_create_service", return_value={"service_id": "svc-1"}) as service_mock, \
+             patch.object(client, "_get_or_create_field", return_value={"field_id": "fld-1"}) as field_mock, \
+             patch.object(client, "_ensure_mappings") as ensure_mock:
+            summary = client.ensure_default_hashmap_pricing()
+
+        self.assertEqual(service_mock.call_count, 3)
+        self.assertEqual(field_mock.call_count, 3)
+        self.assertEqual(ensure_mock.call_count, 3)
+
+        services = {item["service"]: item["mappings"] for item in summary["services"]}
+        self.assertEqual(services["network.bw.out"], [])
+
+    def test_default_hashmap_pricing_accepts_custom_configuration(self):
+        client = CloudKittyClient()
+        pricing = {"instance": [{"value": "x1", "cost": 0.123}]}
+
+        with patch.object(client, "_get_or_create_service", return_value={"service_id": "svc-1"}), \
+             patch.object(client, "_get_or_create_field", return_value={"field_id": "fld-1"}), \
+             patch.object(client, "_ensure_mappings") as ensure_mock:
+            summary = client.ensure_default_hashmap_pricing(pricing)
+
+        ensure_mock.assert_called_once_with("fld-1", [{"value": "x1", "cost": 0.123}])
+        self.assertEqual(summary["services"][0]["service"], "instance")
+
 
 if __name__ == "__main__":
     unittest.main()
