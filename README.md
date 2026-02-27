@@ -362,6 +362,8 @@ python scripts/configure_cloudkitty_defaults.py --pricing-config ./cloudkitty-pr
 
 Default placeholders are intentionally set slightly cheaper than Azure list pricing for compute/storage, and networking egress is explicitly left empty (`[]`).
 
+Before applying rates, the script also checks OpenStack flavors (`openstack flavor list`) and warns if any existing flavor name matches an `instance` mapping value that will be rated.
+
 ## Notes
 
 - CloudKitty API versions vary by deployment; this implementation tries common summary endpoints in order.

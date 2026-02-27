@@ -9,6 +9,7 @@ Usage:
 
 import json
 import argparse
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,57 @@ def load_pricing_config(path: Path | None) -> dict[str, list[dict[str, Any]]]:
     return _validate_pricing_config(payload)
 
 
+def get_openstack_flavor_names() -> list[str] | None:
+    try:
+        result = subprocess.run(
+            ["openstack", "flavor", "list", "-f", "json", "-c", "Name"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print("WARNING: openstack CLI not found; unable to check flavor names before applying rates.")
+        return None
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        if detail:
+            print(f"WARNING: unable to list OpenStack flavors; skipping flavor/rate warning check ({detail}).")
+        else:
+            print("WARNING: unable to list OpenStack flavors; skipping flavor/rate warning check.")
+        return None
+
+    try:
+        payload = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        print("WARNING: unexpected JSON from 'openstack flavor list'; skipping flavor/rate warning check.")
+        return None
+
+    names: list[str] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("Name")
+        if name is None:
+            continue
+        names.append(str(name))
+    return names
+
+
+def warn_if_flavors_will_be_rated(pricing: dict[str, list[dict[str, Any]]]) -> None:
+    flavor_names = get_openstack_flavor_names()
+    if flavor_names is None:
+        return
+
+    rated_flavor_values = {str(mapping.get("value")) for mapping in pricing.get("instance", []) if "value" in mapping}
+    matched = sorted(name for name in flavor_names if name in rated_flavor_values)
+    if not matched:
+        return
+
+    print("WARNING: the following OpenStack flavors match CloudKitty instance rate mappings and will be rated:")
+    for name in matched:
+        print(f" - {name}")
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -78,6 +130,8 @@ def main() -> int:
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"ERROR: invalid pricing configuration: {exc}")
         return 1
+
+    warn_if_flavors_will_be_rated(pricing)
 
     client = CloudKittyClient(debug=args.debug)
     try:
