@@ -19,6 +19,11 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 - `GET /api/projects/<project_id>/costs/monthly/graph`
   - Returns an HTML page with an inline SVG chart showing monthly cost usage over time.
 - Web UI at `/` to query a project and render a line chart.
+
+- `POST /api/projects/<project_id>/invoices`
+  - Creates an invoice for a customer, scoped to a single project.
+- `POST /api/projects/<project_id>/receipts`
+  - Creates a receipt after payment and updates invoice status (`open` → `partially_paid`/`paid`).
 - Script to preconfigure CloudKitty hashmap pricing defaults.
 
 ## Prerequisites
@@ -107,6 +112,35 @@ curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/monthly"
 
 ```bash
 curl "http://localhost:8082/api/projects/<PROJECT_ID>/costs/monthly/graph"
+```
+
+
+### 8) Create an invoice
+
+```bash
+curl -X POST "http://localhost:8082/api/projects/<PROJECT_ID>/invoices" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount_due": 125.50,
+    "currency": "USD",
+    "customer_name": "Acme Corp",
+    "customer_email": "billing@acme.test",
+    "description": "Monthly cloud bill"
+  }'
+```
+
+### 9) Create a receipt for a paid invoice
+
+```bash
+curl -X POST "http://localhost:8082/api/projects/<PROJECT_ID>/receipts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invoice_id": "inv_xxx",
+    "amount_paid": 125.50,
+    "currency": "USD",
+    "payment_method": "wire_transfer",
+    "payment_reference": "wire-2026-0001"
+  }'
 ```
 
 
@@ -244,6 +278,16 @@ curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/balance" \
 ```bash
 curl "http://localhost:8082/api/projects/proj_123/payments/balance"
 ```
+
+
+## Billing module isolation (microservice-ready)
+
+Invoice and receipt logic is intentionally separated into `billing_service.py` (domain + storage adapter) so it can be moved behind a separate process later with minimal API-layer changes.
+
+Current design:
+- `BillingService`: business rules for invoice and receipt creation.
+- `InMemoryBillingRepository`: storage adapter used by the monolith now, replaceable with DB/OpenSearch adapter later.
+- HTTP layer (`app.py`) only maps requests to service DTOs and responses.
 
 ## OpenSearch payment storage per project
 
