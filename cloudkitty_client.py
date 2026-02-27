@@ -274,12 +274,13 @@ class CloudKittyClient:
         series.sort(key=lambda x: x["timestamp"])
         return series
 
-    def ensure_default_hashmap_pricing(self) -> dict[str, Any]:
+    def ensure_default_hashmap_pricing(self, pricing: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
         self._debug("Ensuring default hashmap pricing")
-        defaults = {
-            "instance": [{"value": "small", "cost": 0.03}, {"value": "medium", "cost": 0.07}, {"value": "large", "cost": 0.12}],
-            "volume": [{"value": "standard", "cost": 0.10}, {"value": "ssd", "cost": 0.18}],
-            "network.bw.out": [{"value": "default", "cost": 0.02}],
+        defaults = pricing or {
+            "instance": [{"value": "small", "cost": 0.025}, {"value": "medium", "cost": 0.06}, {"value": "large", "cost": 0.10}],
+            "volume": [{"value": "standard", "cost": 0.08}, {"value": "ssd", "cost": 0.15}],
+            # Intentionally empty: networking egress is left unpriced by default.
+            "network.bw.out": [],
         }
         summary = {"services": []}
         for service_name, mappings in defaults.items():
