@@ -9,12 +9,14 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
 
 
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
+BILLING_SERVICE = BillingService(InMemoryBillingRepository())
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -84,6 +86,12 @@ class CostHandler(SimpleHTTPRequestHandler):
                 if parts[5] == "monthly" and parts[6] == "graph":
                     return self._project_costs_monthly_graph(project_id)
 
+            if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
+                project_id = parts[3]
+                return self._project_invoices_get(project_id, parts)
+            if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "receipts":
+                project_id = parts[3]
+                return self._project_receipts_get(project_id)
             if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
                 project_id = parts[3]
                 return self._project_payments_get(project_id, parts, parse_qs(parsed.query))
@@ -93,6 +101,12 @@ class CostHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         parts = parsed.path.split("/")
+        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
+            project_id = parts[3]
+            return self._project_invoices_post(project_id)
+        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "receipts":
+            project_id = parts[3]
+            return self._project_receipts_post(project_id)
         if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
             project_id = parts[3]
             return self._project_payments_post(project_id, parts, parse_qs(parsed.query))
@@ -123,6 +137,66 @@ class CostHandler(SimpleHTTPRequestHandler):
             self._json({"error": str(exc)}, status=502)
             return False
         return True
+
+
+    def _project_invoices_get(self, project_id: str, parts: list[str]):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
+        try:
+            if len(parts) == 5:
+                return self._json({"invoices": BILLING_SERVICE.list_invoices(project_id)})
+            if len(parts) == 6:
+                return self._json(BILLING_SERVICE.get_invoice(project_id, parts[5]))
+        except InvoiceNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
+        except BillingError as exc:
+            return self._json({"error": str(exc)}, status=400)
+
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def _project_invoices_post(self, project_id: str):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
+        body = self._read_json_body()
+        try:
+            request = InvoiceCreateRequest(
+                amount_due=float(body.get("amount_due", 0)),
+                currency=body.get("currency", "USD"),
+                customer_name=body.get("customer_name", ""),
+                customer_email=body.get("customer_email", ""),
+                due_at=body.get("due_at"),
+                description=body.get("description", ""),
+            )
+            return self._json(BILLING_SERVICE.create_invoice(project_id, request), status=201)
+        except (TypeError, ValueError) as exc:
+            return self._json({"error": f"Invalid invoice payload: {exc}"}, status=400)
+
+    def _project_receipts_get(self, project_id: str):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
+        try:
+            return self._json({"receipts": BILLING_SERVICE.list_receipts(project_id)})
+        except BillingError as exc:
+            return self._json({"error": str(exc)}, status=400)
+
+    def _project_receipts_post(self, project_id: str):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
+        body = self._read_json_body()
+        try:
+            request = ReceiptCreateRequest(
+                invoice_id=body.get("invoice_id", ""),
+                amount_paid=float(body.get("amount_paid", 0)),
+                currency=body.get("currency", "USD"),
+                paid_at=body.get("paid_at"),
+                payment_method=body.get("payment_method", "unknown"),
+                payment_reference=body.get("payment_reference", ""),
+            )
+            return self._json(BILLING_SERVICE.create_receipt(project_id, request), status=201)
+        except InvoiceNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
+        except (TypeError, ValueError, BillingError) as exc:
+            return self._json({"error": f"Invalid receipt payload: {exc}"}, status=400)
 
     def _project_payments_get(self, project_id: str, parts: list[str], query: dict[str, list[str]]):
         if not self._ensure_cloudkitty_project_exists(project_id):
