@@ -18,6 +18,9 @@ class RecordingClient:
     def ensure_project_exists(self, project_id):
         return None
 
+    def get_project_created_at(self, project_id):
+        return app.dt.datetime(2025, 12, 15, 12, 0, tzinfo=app.dt.timezone.utc)
+
     def get_project_aggregate_for_range(self, project_id, start, end):
         self.__class__.aggregate_calls.append((project_id, start, end))
         return 42.5
@@ -135,18 +138,16 @@ class LastMonthEndpointTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["project_id"], "proj-5")
         self.assertEqual(body["resolution"], "month")
-        self.assertEqual(body["aggregate_cost_now"], 5.0)
-        self.assertEqual(len(body["time_series"]), 1)
+        self.assertEqual(body["aggregate_cost_now"], 14.0)
+        self.assertEqual(len(body["time_series"]), 2)
+        self.assertEqual(body["start"], "2025-12-01T00:00:00+00:00")
 
         self.assertEqual(len(RecordingClient.aggregate_calls), 0)
         self.assertEqual(len(RecordingClient.series_calls), 1)
         _, start, end, resolution = RecordingClient.series_calls[0]
         self.assertEqual(resolution, "month")
-        self.assertEqual(start.isoformat(), "1970-01-01T00:00:00+00:00")
-        self.assertEqual((end + app.dt.timedelta(seconds=1)).day, 1)
-        self.assertEqual((end + app.dt.timedelta(seconds=1)).hour, 0)
-        self.assertEqual((end + app.dt.timedelta(seconds=1)).minute, 0)
-        self.assertEqual((end + app.dt.timedelta(seconds=1)).second, 0)
+        self.assertEqual(start.isoformat(), "2025-12-01T00:00:00+00:00")
+        self.assertGreaterEqual(end.day, 1)
 
     def test_monthly_graph_endpoint_returns_html_page(self):
         with patch("app.CloudKittyClient", RecordingClient):

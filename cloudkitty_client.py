@@ -188,6 +188,26 @@ class CloudKittyClient:
                 raise ProjectNotFoundError(f"Project '{project_id}' does not exist") from exc
             raise CloudKittyError(f"Unable to verify project '{project_id}' existence") from exc
 
+    def get_project_created_at(self, project_id: str) -> dt.datetime | None:
+        if not self._token:
+            self.authenticate()
+        project_url = self._build_keystone_project_url(project_id)
+        try:
+            _, _, payload = self._http_json("GET", project_url, headers={"X-Auth-Token": self._token})
+        except CloudKittyApiError as exc:
+            if exc.status_code == 404:
+                raise ProjectNotFoundError(f"Project '{project_id}' does not exist") from exc
+            raise CloudKittyError(f"Unable to fetch project '{project_id}' metadata") from exc
+
+        created_at_raw = payload.get("project", {}).get("created_at")
+        if not created_at_raw:
+            return None
+
+        parsed = dt.datetime.fromisoformat(str(created_at_raw).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.astimezone(dt.timezone.utc)
+
     @staticmethod
     def _sum_cost_values(node: Any) -> Decimal:
         total = Decimal("0")

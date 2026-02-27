@@ -51,6 +51,10 @@ def _default_year_month() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m")
 
 
+def _start_of_month_utc(moment: dt.datetime) -> dt.datetime:
+    return moment.astimezone(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
 class CostHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -250,20 +254,20 @@ class CostHandler(SimpleHTTPRequestHandler):
 
     def _project_costs_monthly(self, project_id: str):
         now = dt.datetime.now(dt.timezone.utc)
-        current_month_start = _start_of_current_month_utc(now)
-        end = current_month_start - dt.timedelta(seconds=1)
-        start = dt.datetime(1970, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
 
         client = CloudKittyClient(debug=DEBUG_MODE)
         try:
             client.ensure_project_exists(project_id)
+            project_created_at = client.get_project_created_at(project_id)
+            start = _start_of_month_utc(project_created_at or now)
+            end = now
             series = client.get_project_time_series(project_id, start, end, "month")
         except ProjectNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
         except (OpenStackAuthError, CloudKittyError) as exc:
             return self._json({"error": str(exc)}, status=502)
 
-        monthly_series = [point for point in series if _parse_date(point["timestamp"], end) < current_month_start]
+        monthly_series = [point for point in series if _parse_date(point["timestamp"], end) >= start]
         aggregate = sum(point["cost"] for point in monthly_series)
 
         return self._json(
@@ -280,20 +284,20 @@ class CostHandler(SimpleHTTPRequestHandler):
 
     def _project_costs_monthly_graph(self, project_id: str):
         now = dt.datetime.now(dt.timezone.utc)
-        current_month_start = _start_of_current_month_utc(now)
-        end = current_month_start - dt.timedelta(seconds=1)
-        start = dt.datetime(1970, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
 
         client = CloudKittyClient(debug=DEBUG_MODE)
         try:
             client.ensure_project_exists(project_id)
+            project_created_at = client.get_project_created_at(project_id)
+            start = _start_of_month_utc(project_created_at or now)
+            end = now
             series = client.get_project_time_series(project_id, start, end, "month")
         except ProjectNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
         except (OpenStackAuthError, CloudKittyError) as exc:
             return self._json({"error": str(exc)}, status=502)
 
-        monthly_series = [point for point in series if _parse_date(point["timestamp"], end) < current_month_start]
+        monthly_series = [point for point in series if _parse_date(point["timestamp"], end) >= start]
         labels = [dt.datetime.fromisoformat(point["timestamp"].replace("Z", "+00:00")).strftime("%Y-%m") for point in monthly_series]
         costs = [float(point["cost"]) for point in monthly_series]
         max_cost = max(costs) if costs else 1.0
