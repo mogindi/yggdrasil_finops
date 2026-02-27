@@ -50,6 +50,14 @@ class CloudKittyClientParsingTests(unittest.TestCase):
             {"timestamp": "2026-02-21T10:18:41", "cost": 0.03},
         ])
 
+    def test_get_project_created_at_parses_keystone_timestamp(self):
+        client = CloudKittyClient()
+        client._token = "token"
+        with patch.object(client, "_http_json", return_value=(200, {}, {"project": {"created_at": "2026-01-15T05:00:00Z"}})):
+            created_at = client.get_project_created_at("project-1")
+
+        self.assertEqual(created_at, dt.datetime(2026, 1, 15, 5, 0, tzinfo=dt.timezone.utc))
+
 
 if __name__ == "__main__":
     unittest.main()
