@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
+from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
 
 
 ROOT = Path(__file__).resolve().parent
@@ -109,6 +110,8 @@ class CostHandler(SimpleHTTPRequestHandler):
             return self._project_receipts_post(project_id)
         if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
             project_id = parts[3]
+            if len(parts) == 7 and parts[5] == "revolut" and parts[6] == "order":
+                return self._project_payments_revolut_create(project_id)
             return self._project_payments_post(project_id, parts, parse_qs(parsed.query))
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -197,6 +200,44 @@ class CostHandler(SimpleHTTPRequestHandler):
             return self._json({"error": str(exc)}, status=404)
         except (TypeError, ValueError, BillingError) as exc:
             return self._json({"error": f"Invalid receipt payload: {exc}"}, status=400)
+
+
+    def _project_payments_revolut_create(self, project_id: str):
+        if not self._ensure_cloudkitty_project_exists(project_id):
+            return
+        body = self._read_json_body()
+        invoice_id = body.get("invoice_id", "")
+        if not invoice_id:
+            return self._json({"error": "invoice_id is required"}, status=400)
+
+        try:
+            invoice = BILLING_SERVICE.get_invoice(project_id, invoice_id)
+        except InvoiceNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
+
+        remaining_amount = float(invoice["amount_due"]) - float(invoice["amount_paid"])
+        if remaining_amount <= 0:
+            return self._json({"error": f"Invoice '{invoice_id}' is already fully paid"}, status=400)
+
+        client = RevolutBusinessClient()
+        try:
+            response = client.create_order(
+                order_id=invoice_id,
+                amount=float(body.get("amount", remaining_amount)),
+                currency=body.get("currency", invoice.get("currency", "USD")),
+                description=body.get("description", invoice.get("description", "Project invoice payment")),
+                customer_email=invoice.get("customer_email", ""),
+                success_url=body.get("success_url"),
+                metadata={
+                    "project_id": project_id,
+                    "invoice_id": invoice_id,
+                },
+            )
+            return self._json(response, status=201)
+        except RevolutApiError as exc:
+            return self._json({"error": str(exc), "details": exc.body}, status=502)
+        except RevolutError as exc:
+            return self._json({"error": str(exc)}, status=502)
 
     def _project_payments_get(self, project_id: str, parts: list[str], query: dict[str, list[str]]):
         if not self._ensure_cloudkitty_project_exists(project_id):

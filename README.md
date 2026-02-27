@@ -25,6 +25,7 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 - `POST /api/projects/<project_id>/receipts`
   - Creates a receipt after payment and updates invoice status (`open` → `partially_paid`/`paid`).
 - Script to preconfigure CloudKitty hashmap pricing defaults.
+- Revolut Business order creation for invoice checkout links.
 
 ## Prerequisites
 
@@ -54,6 +55,9 @@ The service uses the standard OpenStack variables (from `openrc`):
   - `CLOUDKITTY_CURRENCY` (default response currency: `USD`)
   - `OPENSEARCH_URL` (OpenSearch base URL, default: `http://localhost:9200`)
   - `OS_VERIFY=false` to disable TLS verification (not recommended)
+  - `REVOLUT_API_KEY` (required for Revolut payment order creation)
+  - `REVOLUT_BUSINESS_API_URL` (default: `https://sandbox-merchant.revolut.com`)
+  - `REVOLUT_ORDERS_PATH` (default: `/api/orders`)
 
 ## Run the app
 
@@ -343,3 +347,17 @@ Defaults created (if missing):
 
 - CloudKitty API versions vary by deployment; this implementation tries common summary endpoints in order.
 - Endpoint and TLS behavior can be overridden via env vars as noted above.
+
+
+### 10) Create a Revolut Business order for an invoice
+
+```bash
+curl -X POST "http://localhost:8082/api/projects/<PROJECT_ID>/payments/revolut/order" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invoice_id": "inv_xxx",
+    "success_url": "https://your-portal.example/payments/success"
+  }'
+```
+
+The endpoint reads the invoice, calculates the remaining amount (`amount_due - amount_paid`), and creates a Revolut order that can be used for checkout.
