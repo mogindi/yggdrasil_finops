@@ -28,6 +28,13 @@ class ConfigureCloudKittyDefaultsTests(unittest.TestCase):
 
         self.assertEqual(out.getvalue(), "")
 
+
+    def test_default_pricing_includes_default_flavors(self):
+        expected_flavors = {"m1.tiny", "m1.small", "m1.medium", "m1.large", "m1.xlarge", "m2.tiny"}
+        configured_flavors = {entry["value"] for entry in cfg.DEFAULT_PRICING["instance"]}
+
+        self.assertTrue(expected_flavors.issubset(configured_flavors))
+
     def test_get_openstack_flavor_names_handles_missing_cli(self):
         with patch("subprocess.run", side_effect=FileNotFoundError), patch("sys.stdout", new_callable=io.StringIO) as out:
             names = cfg.get_openstack_flavor_names()
