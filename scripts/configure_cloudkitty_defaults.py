@@ -18,9 +18,12 @@ from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthEr
 
 DEFAULT_PRICING: dict[str, list[dict[str, Any]]] = {
     "instance": [
-        {"value": "small", "cost": 0.025},
-        {"value": "medium", "cost": 0.06},
-        {"value": "large", "cost": 0.10},
+        {"value": "m1.tiny", "cost": 0.0125},
+        {"value": "m1.small", "cost": 0.025},
+        {"value": "m1.medium", "cost": 0.06},
+        {"value": "m1.large", "cost": 0.10},
+        {"value": "m1.xlarge", "cost": 0.20},
+        {"value": "m2.tiny", "cost": 0.0125},
     ],
     "volume": [
         {"value": "standard", "cost": 0.08},
