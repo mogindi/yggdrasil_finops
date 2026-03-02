@@ -18,7 +18,7 @@ class FakeCloudKittyClient:
 
 
 class BillingEndpointsTests(unittest.TestCase):
-    def _request(self, method, path, body=None):
+    def _request(self, method, path, body=None, expect_json=True):
         server = ThreadingHTTPServer(("127.0.0.1", 0), app.CostHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -28,9 +28,13 @@ class BillingEndpointsTests(unittest.TestCase):
             headers = {"Content-Type": "application/json"} if body is not None else {}
             conn.request(method, path, body=payload, headers=headers)
             resp = conn.getresponse()
-            data = json.loads(resp.read().decode("utf-8"))
+            raw = resp.read()
+            content_type = resp.getheader("Content-Type") or ""
             conn.close()
-            return resp.status, data
+            if expect_json:
+                data = json.loads(raw.decode("utf-8"))
+                return resp.status, data
+            return resp.status, raw, content_type
         finally:
             server.shutdown()
             server.server_close()
@@ -84,6 +88,39 @@ class BillingEndpointsTests(unittest.TestCase):
 
         self.assertEqual(status, 404)
         self.assertIn("does not exist", body["error"])
+
+    def test_invoice_file_endpoint_returns_pdf_and_html(self):
+        app.BILLING_SERVICE = BillingService(InMemoryBillingRepository())
+        with patch("app.CloudKittyClient", FakeCloudKittyClient):
+            status, invoice = self._request(
+                "POST",
+                "/api/projects/proj-123/invoices",
+                body={
+                    "amount_due": 75.0,
+                    "currency": "USD",
+                    "customer_name": "Acme Corp",
+                    "customer_email": "billing@acme.test",
+                },
+            )
+            self.assertEqual(status, 201)
+
+            status, pdf_body, content_type = self._request(
+                "GET",
+                f"/api/projects/proj-123/invoices/{invoice['invoice_id']}/file",
+                expect_json=False,
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(content_type, "application/pdf")
+            self.assertTrue(pdf_body.startswith(b"%PDF"))
+
+            status, html_body, content_type = self._request(
+                "GET",
+                f"/api/projects/proj-123/invoices/{invoice['invoice_id']}/file?view=html",
+                expect_json=False,
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(content_type.startswith("text/html"))
+            self.assertIn(b"iframe", html_body)
 
 
 if __name__ == "__main__":

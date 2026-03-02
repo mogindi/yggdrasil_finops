@@ -24,6 +24,11 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
   - Creates an invoice for a customer, scoped to a single project.
 - `POST /api/projects/<project_id>/receipts`
   - Creates a receipt after payment and updates invoice status (`open` → `partially_paid`/`paid`).
+- `GET /api/projects/<project_id>/invoices/<invoice_id>/file`
+  - Generates a PDF invoice (optional `logo_path`), can return inline PDF, downloadable attachment, or HTML preview (`view=html`).
+  - Optional `send_email=true` sends the generated PDF using Brevo API.
+- `GET /api/projects/<project_id>/receipts/<receipt_id>/file`
+  - Generates a PDF receipt with the same preview/download/email options.
 - Script to preconfigure CloudKitty hashmap pricing defaults.
 - Revolut Business order creation for invoice checkout links.
 
@@ -58,6 +63,9 @@ The service uses the standard OpenStack variables (from `openrc`):
   - `REVOLUT_API_KEY` (required for Revolut payment order creation)
   - `REVOLUT_BUSINESS_API_URL` (default: `https://sandbox-merchant.revolut.com`)
   - `REVOLUT_ORDERS_PATH` (default: `/api/orders`)
+  - `BREVO_API_KEY` (required when using `send_email=true` or CLI `--send-email`)
+  - `BREVO_API_URL` (default: `https://api.brevo.com/v3/smtp/email`)
+  - `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` (email sender identity)
 
 ## Run the app
 
@@ -118,6 +126,19 @@ python yggdrasil_finops.py receipt list --project-id proj_123
 ```
 
 Set `YGGDRASIL_FINOPS_API_URL` (or pass `--api-url`) if your API is not on `http://localhost:8082`.
+
+PDF commands in CLI:
+
+```bash
+# generate + download invoice PDF
+python yggdrasil_finops.py invoice file   --project-id proj_123   --invoice-id inv_001   --logo-path ./logo.jpg   --download-path ./inv_001.pdf
+
+# show invoice PDF as HTML (for browser rendering)
+python yggdrasil_finops.py invoice file --project-id proj_123 --invoice-id inv_001 --html
+
+# send receipt PDF using Brevo
+python yggdrasil_finops.py receipt file --project-id proj_123 --receipt-id rcpt_001 --send-email
+```
 
 ## API examples
 

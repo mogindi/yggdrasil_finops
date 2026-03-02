@@ -12,6 +12,10 @@ class InvoiceNotFoundError(BillingError):
     pass
 
 
+class ReceiptNotFoundError(BillingError):
+    pass
+
+
 @dataclass
 class InvoiceCreateRequest:
     amount_due: float
@@ -62,6 +66,10 @@ class InMemoryBillingRepository:
         with self._lock:
             self._receipts.setdefault(project_id, {})[receipt["receipt_id"]] = receipt
         return receipt
+
+    def get_receipt(self, project_id: str, receipt_id: str) -> dict | None:
+        with self._lock:
+            return self._receipts.get(project_id, {}).get(receipt_id)
 
     def list_receipts(self, project_id: str) -> list[dict]:
         with self._lock:
@@ -127,6 +135,12 @@ class BillingService:
             "created_at": self._utc_now_iso(),
         }
         return self._repo.create_receipt(project_id, receipt)
+
+    def get_receipt(self, project_id: str, receipt_id: str) -> dict:
+        receipt = self._repo.get_receipt(project_id, receipt_id)
+        if not receipt:
+            raise ReceiptNotFoundError(f"Receipt '{receipt_id}' does not exist for project '{project_id}'")
+        return receipt
 
     def list_receipts(self, project_id: str) -> list[dict]:
         return self._repo.list_receipts(project_id)
