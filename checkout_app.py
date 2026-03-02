@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import logging
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,6 +11,7 @@ from urllib.parse import urlparse
 from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
 
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080")
+DEBUG_MODE = False
 
 
 class CheckoutHandler(BaseHTTPRequestHandler):
@@ -54,7 +56,7 @@ class CheckoutHandler(BaseHTTPRequestHandler):
         if remaining_amount <= 0:
             return self._json({"error": f"Invoice '{invoice_id}' is already fully paid"}, status=400)
 
-        client = RevolutBusinessClient()
+        client = RevolutBusinessClient(debug=DEBUG_MODE)
         try:
             response = client.create_order(
                 order_id=invoice_id,
@@ -83,7 +85,12 @@ class CheckoutHandler(BaseHTTPRequestHandler):
 def run() -> None:
     parser = argparse.ArgumentParser(description="Checkout service")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
+    global DEBUG_MODE
+    DEBUG_MODE = args.debug
+    if DEBUG_MODE:
+        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ThreadingHTTPServer(("0.0.0.0", args.port), CheckoutHandler).serve_forever()
 
 
