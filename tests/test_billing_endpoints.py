@@ -122,6 +122,40 @@ class BillingEndpointsTests(unittest.TestCase):
             self.assertTrue(content_type.startswith("text/html"))
             self.assertIn(b"iframe", html_body)
 
+    def test_get_receipt_by_id_and_unknown_receipt_path(self):
+        app.BILLING_SERVICE = BillingService(InMemoryBillingRepository())
+        with patch("app.CloudKittyClient", FakeCloudKittyClient):
+            status, invoice = self._request(
+                "POST",
+                "/api/projects/proj-123/invoices",
+                body={
+                    "amount_due": 100.0,
+                    "currency": "USD",
+                    "customer_name": "Acme Corp",
+                    "customer_email": "billing@acme.test",
+                },
+            )
+            self.assertEqual(status, 201)
+
+            status, receipt = self._request(
+                "POST",
+                "/api/projects/proj-123/receipts",
+                body={
+                    "invoice_id": invoice["invoice_id"],
+                    "amount_paid": 20.0,
+                    "currency": "USD",
+                },
+            )
+            self.assertEqual(status, 201)
+
+            status, found_receipt = self._request("GET", f"/api/projects/proj-123/receipts/{receipt['receipt_id']}")
+            self.assertEqual(status, 200)
+            self.assertEqual(found_receipt["receipt_id"], receipt["receipt_id"])
+
+            status, unknown = self._request("GET", "/api/projects/proj-123/receipts/does-not-exist")
+            self.assertEqual(status, 404)
+            self.assertIn("does not exist", unknown["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
