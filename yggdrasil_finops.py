@@ -120,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     invoice_file = invoice_sub.add_parser("file", help="Generate/view/send invoice PDF")
     _add_base_and_project_args(invoice_file)
     invoice_file.add_argument("--invoice-id", required=True)
-    invoice_file.add_argument("--logo-path")
+    invoice_file.add_argument("--logo-path", required=True)
     invoice_file.add_argument("--download-path", help="Save PDF to local path")
     invoice_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
     invoice_file.add_argument("--send-email", action="store_true", help="Send PDF using Brevo API")
@@ -144,7 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     receipt_file = receipt_sub.add_parser("file", help="Generate/view/send receipt PDF")
     _add_base_and_project_args(receipt_file)
     receipt_file.add_argument("--receipt-id", required=True)
-    receipt_file.add_argument("--logo-path")
+    receipt_file.add_argument("--logo-path", required=True)
     receipt_file.add_argument("--download-path", help="Save PDF to local path")
     receipt_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
     receipt_file.add_argument("--send-email", action="store_true", help="Send PDF using Brevo API")
@@ -200,8 +200,7 @@ def main(argv: list[str] | None = None) -> int:
             "download": "true" if args.download_path else "false",
             "send_email": "true" if args.send_email else "false",
         }
-        if args.logo_path:
-            params["logo_path"] = args.logo_path
+        params["logo_path"] = args.logo_path
         if args.email:
             params["email"] = args.email
         query = parse.urlencode(params)
@@ -240,8 +239,7 @@ def main(argv: list[str] | None = None) -> int:
             "download": "true" if args.download_path else "false",
             "send_email": "true" if args.send_email else "false",
         }
-        if args.logo_path:
-            params["logo_path"] = args.logo_path
+        params["logo_path"] = args.logo_path
         if args.email:
             params["email"] = args.email
         query = parse.urlencode(params)

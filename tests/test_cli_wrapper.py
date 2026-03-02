@@ -87,6 +87,8 @@ class CliWrapperTests(unittest.TestCase):
                     "proj_123",
                     "--invoice-id",
                     "inv_1",
+                    "--logo-path",
+                    "./logo.jpg",
                     "--download-path",
                     "./inv_1.pdf",
                 ])
