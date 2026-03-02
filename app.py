@@ -21,6 +21,15 @@ ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
 BILLING_SERVICE = BillingService(InMemoryBillingRepository())
 DOCUMENT_SERVICE = DocumentService()
+ENABLED_DOMAINS = {
+    item.strip().lower()
+    for item in os.environ.get("ENABLED_DOMAINS", "costs,document_generator,checkout,payments,ui").split(",")
+    if item.strip()
+}
+
+
+def _domain_enabled(name: str) -> bool:
+    return name.lower() in ENABLED_DOMAINS
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -67,36 +76,36 @@ class CostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/":
+        if parsed.path == "/" and _domain_enabled("ui"):
             return self._serve_file(ROOT / "templates" / "index.html", "text/html")
         if parsed.path == "/healthz":
             return self._json({"status": "ok"})
-        if parsed.path.startswith("/static/"):
+        if parsed.path.startswith("/static/") and _domain_enabled("ui"):
             return self._serve_file(ROOT / parsed.path.lstrip("/"), self._content_type(parsed.path))
         if parsed.path.startswith("/api/projects/"):
             parts = parsed.path.split("/")
-            if len(parts) == 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "costs":
+            if _domain_enabled("costs") and len(parts) == 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "costs":
                 project_id = parts[3]
                 return self._project_costs(project_id, parse_qs(parsed.query))
-            if len(parts) == 6 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "costs":
+            if _domain_enabled("costs") and len(parts) == 6 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "costs":
                 project_id = parts[3]
                 if parts[5] == "last-month":
                     return self._project_costs_last_month(project_id, parse_qs(parsed.query))
                 if parts[5] == "monthly":
                     return self._project_costs_monthly(project_id)
                 return self._project_costs_for_month(project_id, parts[5], parse_qs(parsed.query))
-            if len(parts) == 7 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "costs":
+            if _domain_enabled("costs") and len(parts) == 7 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "costs":
                 project_id = parts[3]
                 if parts[5] == "monthly" and parts[6] == "graph":
                     return self._project_costs_monthly_graph(project_id)
 
-            if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
+            if _domain_enabled("document_generator") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
                 project_id = parts[3]
                 return self._project_invoices_get(project_id, parts)
-            if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "receipts":
+            if _domain_enabled("document_generator") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "receipts":
                 project_id = parts[3]
                 return self._project_receipts_get(project_id, parts)
-            if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
+            if _domain_enabled("payments") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
                 project_id = parts[3]
                 return self._project_payments_get(project_id, parts, parse_qs(parsed.query))
 
@@ -105,23 +114,25 @@ class CostHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         parts = parsed.path.split("/")
-        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
+        if _domain_enabled("document_generator") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
             project_id = parts[3]
             return self._project_invoices_post(project_id)
-        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "receipts":
+        if _domain_enabled("document_generator") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "receipts":
             project_id = parts[3]
             return self._project_receipts_post(project_id)
-        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
+        if _domain_enabled("checkout") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
             project_id = parts[3]
             if len(parts) == 7 and parts[5] == "revolut" and parts[6] == "order":
                 return self._project_payments_revolut_create(project_id)
+        if _domain_enabled("payments") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
+            project_id = parts[3]
             return self._project_payments_post(project_id, parts, parse_qs(parsed.query))
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_PUT(self):
         parsed = urlparse(self.path)
         parts = parsed.path.split("/")
-        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
+        if _domain_enabled("payments") and len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
             project_id = parts[3]
             return self._project_payments_put(project_id, parts, parse_qs(parsed.query))
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")

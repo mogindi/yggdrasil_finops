@@ -67,6 +67,29 @@ The service uses the standard OpenStack variables (from `openrc`):
   - `BREVO_API_URL` (default: `https://api.brevo.com/v3/smtp/email`)
   - `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` (email sender identity)
 
+
+## Microservice deployment (Docker Compose)
+
+The project now supports a microservice topology while keeping a **unified endpoint** and **unified CLI**:
+
+- `gateway` (public entrypoint on `:8082`)
+- `costs_usage` (CloudKitty costs + UI/static assets + graphing)
+- `document_generator` (invoices/receipts + PDF/email generation)
+- `checkout` (Revolut Business order creation endpoint)
+- `payments` (OpenSearch payment ledger endpoints)
+
+All API clients (including `yggdrasil_finops.py`) should continue to use a single base URL, e.g. `http://localhost:8082`.
+
+Start everything:
+
+```bash
+docker compose up --build
+```
+
+Then use the same API/CLI commands as before (pointing to gateway `:8082`).
+
+The domain split is controlled by `ENABLED_DOMAINS` in each backend container (`costs_usage`, `document_generator`, `checkout`, `payments`).
+
 ## Run the app
 
 ```bash
