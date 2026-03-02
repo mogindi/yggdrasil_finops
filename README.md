@@ -74,6 +74,51 @@ python app.py --debug
 
 Then browse to `http://localhost:8082`.
 
+## CLI wrapper
+
+You can call the API with a simple CLI wrapper:
+
+```bash
+python yggdrasil_finops.py --help
+```
+
+Examples using intuitive `setup/create/list/show` command patterns:
+
+```bash
+# project setup
+python yggdrasil_finops.py project setup --project-id proj_123
+
+# payment create/list/show
+python yggdrasil_finops.py payment create \
+  --project-id proj_123 \
+  --event-id evt_001 \
+  --invoice-id inv_001 \
+  --amount 100.00 \
+  --paid-at 2026-01-10T12:00:00Z
+python yggdrasil_finops.py payment list --project-id proj_123
+python yggdrasil_finops.py payment show --project-id proj_123 --event-id evt_001
+
+# invoice create/list/show
+python yggdrasil_finops.py invoice create \
+  --project-id proj_123 \
+  --amount-due 100.00 \
+  --customer-name "Acme Corp" \
+  --customer-email billing@acme.example \
+  --due-at 2026-02-01T00:00:00Z
+python yggdrasil_finops.py invoice list --project-id proj_123
+python yggdrasil_finops.py invoice show --project-id proj_123 --invoice-id inv_001
+
+# receipt create/list
+python yggdrasil_finops.py receipt create \
+  --project-id proj_123 \
+  --invoice-id inv_001 \
+  --amount-paid 100.00 \
+  --paid-at 2026-01-11T14:30:00Z
+python yggdrasil_finops.py receipt list --project-id proj_123
+```
+
+Set `YGGDRASIL_FINOPS_API_URL` (or pass `--api-url`) if your API is not on `http://localhost:8082`.
+
 ## API examples
 
 ### 1) Aggregate + time series
