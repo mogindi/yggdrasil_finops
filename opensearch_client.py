@@ -88,6 +88,15 @@ class OpenSearchClient:
         has_root_cause = any(cause.get("type") == "resource_already_exists_exception" for cause in root_causes)
         return err_type == "resource_already_exists_exception" or has_root_cause
 
+
+
+    @staticmethod
+    def _payments_index_name(partition: str) -> str:
+        raw = partition.removeprefix("project:").strip().lower()
+        normalized = "".join(ch if (ch.isalnum() or ch in "_-") else "-" for ch in raw).strip("-")
+        normalized = normalized or "default"
+        return f"payments-project-{normalized}"
+
     def create_payments_template(self) -> dict[str, Any]:
         body = {
             "index_patterns": ["payments-*"],
@@ -117,12 +126,13 @@ class OpenSearchClient:
         }
         return self._http_json("PUT", "/_index_template/payments_template", body)
 
-    def create_payments_index(self, year_month: str) -> dict[str, Any]:
+    def create_payments_index(self, partition: str) -> dict[str, Any]:
+        index_name = self._payments_index_name(partition)
         try:
-            return self._http_json("PUT", f"/payments-{year_month}")
+            return self._http_json("PUT", f"/{index_name}")
         except OpenSearchApiError as exc:
             if self._is_resource_already_exists(exc):
-                return {"acknowledged": True, "already_exists": True, "index": f"payments-{year_month}"}
+                return {"acknowledged": True, "already_exists": True, "index": index_name}
             raise
 
     def create_balances_index(self) -> dict[str, Any]:
@@ -147,19 +157,21 @@ class OpenSearchClient:
                 return {"acknowledged": True, "already_exists": True, "index": "project-balances"}
             raise
 
-    def upsert_payment_event(self, year_month: str, event_id: str, document: dict[str, Any]) -> dict[str, Any]:
-        return self._http_json("PUT", f"/payments-{year_month}/_doc/{parse.quote(event_id)}", document)
+    def upsert_payment_event(self, partition: str, event_id: str, document: dict[str, Any]) -> dict[str, Any]:
+        index_name = self._payments_index_name(partition)
+        return self._http_json("PUT", f"/{index_name}/_doc/{parse.quote(event_id)}", document)
 
-    def bulk_payment_events(self, events: list[dict[str, Any]], year_month: str) -> dict[str, Any]:
+    def bulk_payment_events(self, events: list[dict[str, Any]], partition: str) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
         for event in events:
             event_id = event.get("event_id")
-            rows.append({"index": {"_index": f"payments-{year_month}", "_id": event_id}})
+            rows.append({"index": {"_index": self._payments_index_name(partition), "_id": event_id}})
             rows.append(event)
         return self._http_ndjson("/_bulk", rows)
 
-    def get_payment_event(self, year_month: str, event_id: str) -> dict[str, Any]:
-        return self._http_json("GET", f"/payments-{year_month}/_doc/{parse.quote(event_id)}")
+    def get_payment_event(self, partition: str, event_id: str) -> dict[str, Any]:
+        index_name = self._payments_index_name(partition)
+        return self._http_json("GET", f"/{index_name}/_doc/{parse.quote(event_id)}")
 
     def search_project_payments(self, project_id: str, size: int = 25) -> dict[str, Any]:
         body = {
@@ -218,11 +230,14 @@ class OpenSearchClient:
     def get_balance(self, project_id: str) -> dict[str, Any]:
         return self._http_json("GET", f"/project-balances/_doc/{parse.quote(project_id)}")
 
-    def get_index_mapping(self, year_month: str) -> dict[str, Any]:
-        return self._http_json("GET", f"/payments-{year_month}/_mapping")
+    def get_index_mapping(self, partition: str) -> dict[str, Any]:
+        index_name = self._payments_index_name(partition)
+        return self._http_json("GET", f"/{index_name}/_mapping")
 
-    def get_index_settings(self, year_month: str) -> dict[str, Any]:
-        return self._http_json("GET", f"/payments-{year_month}/_settings")
+    def get_index_settings(self, partition: str) -> dict[str, Any]:
+        index_name = self._payments_index_name(partition)
+        return self._http_json("GET", f"/{index_name}/_settings")
 
-    def refresh_index(self, year_month: str) -> dict[str, Any]:
-        return self._http_json("POST", f"/payments-{year_month}/_refresh")
+    def refresh_index(self, partition: str) -> dict[str, Any]:
+        index_name = self._payments_index_name(partition)
+        return self._http_json("POST", f"/{index_name}/_refresh")
