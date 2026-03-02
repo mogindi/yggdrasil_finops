@@ -19,9 +19,8 @@ services:
 
   costs_usage:
     build: .
-    command: ["python", "app.py", "--port", "8080"]
+    command: ["python", "costs_usage_app.py", "--port", "8080"]
     environment:
-      ENABLED_DOMAINS: costs,ui
       OS_AUTH_URL: ${OS_AUTH_URL:-}
       OS_USERNAME: ${OS_USERNAME:-}
       OS_PASSWORD: ${OS_PASSWORD:-}
@@ -37,19 +36,8 @@ services:
 
   document_generator:
     build: .
-    command: ["python", "app.py", "--port", "8080"]
+    command: ["python", "document_generator_app.py", "--port", "8080"]
     environment:
-      ENABLED_DOMAINS: document_generator
-      OS_AUTH_URL: ${OS_AUTH_URL:-}
-      OS_USERNAME: ${OS_USERNAME:-}
-      OS_PASSWORD: ${OS_PASSWORD:-}
-      OS_PROJECT_NAME: ${OS_PROJECT_NAME:-}
-      OS_PROJECT_ID: ${OS_PROJECT_ID:-}
-      OS_USER_DOMAIN_NAME: ${OS_USER_DOMAIN_NAME:-Default}
-      OS_PROJECT_DOMAIN_NAME: ${OS_PROJECT_DOMAIN_NAME:-Default}
-      OS_REGION_NAME: ${OS_REGION_NAME:-}
-      OS_INTERFACE: ${OS_INTERFACE:-public}
-      CLOUDKITTY_ENDPOINT: ${CLOUDKITTY_ENDPOINT:-}
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-}
@@ -57,36 +45,15 @@ services:
 
   checkout:
     build: .
-    command: ["python", "app.py", "--port", "8080"]
+    command: ["python", "checkout_app.py", "--port", "8080"]
     environment:
-      ENABLED_DOMAINS: checkout
-      OS_AUTH_URL: ${OS_AUTH_URL:-}
-      OS_USERNAME: ${OS_USERNAME:-}
-      OS_PASSWORD: ${OS_PASSWORD:-}
-      OS_PROJECT_NAME: ${OS_PROJECT_NAME:-}
-      OS_PROJECT_ID: ${OS_PROJECT_ID:-}
-      OS_USER_DOMAIN_NAME: ${OS_USER_DOMAIN_NAME:-Default}
-      OS_PROJECT_DOMAIN_NAME: ${OS_PROJECT_DOMAIN_NAME:-Default}
-      OS_REGION_NAME: ${OS_REGION_NAME:-}
-      OS_INTERFACE: ${OS_INTERFACE:-public}
-      CLOUDKITTY_ENDPOINT: ${CLOUDKITTY_ENDPOINT:-}
       REVOLUT_API_KEY: ${REVOLUT_API_KEY:-}
+      DOCUMENT_GENERATOR_SERVICE_URL: http://document_generator:8080
       REVOLUT_BUSINESS_API_URL: ${REVOLUT_BUSINESS_API_URL:-https://sandbox-merchant.revolut.com}
       REVOLUT_ORDERS_PATH: ${REVOLUT_ORDERS_PATH:-/api/orders}
 
   payments:
     build: .
-    command: ["python", "app.py", "--port", "8080"]
+    command: ["python", "payments_app.py", "--port", "8080"]
     environment:
-      ENABLED_DOMAINS: payments
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
-      OS_AUTH_URL: ${OS_AUTH_URL:-}
-      OS_USERNAME: ${OS_USERNAME:-}
-      OS_PASSWORD: ${OS_PASSWORD:-}
-      OS_PROJECT_NAME: ${OS_PROJECT_NAME:-}
-      OS_PROJECT_ID: ${OS_PROJECT_ID:-}
-      OS_USER_DOMAIN_NAME: ${OS_USER_DOMAIN_NAME:-Default}
-      OS_PROJECT_DOMAIN_NAME: ${OS_PROJECT_DOMAIN_NAME:-Default}
-      OS_REGION_NAME: ${OS_REGION_NAME:-}
-      OS_INTERFACE: ${OS_INTERFACE:-public}
-      CLOUDKITTY_ENDPOINT: ${CLOUDKITTY_ENDPOINT:-}

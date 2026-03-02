@@ -88,7 +88,15 @@ docker compose up --build
 
 Then use the same API/CLI commands as before (pointing to gateway `:8082`).
 
-The domain split is controlled by `ENABLED_DOMAINS` in each backend container (`costs_usage`, `document_generator`, `checkout`, `payments`).
+Each backend now runs a dedicated application (`costs_usage_app.py`, `document_generator_app.py`, `checkout_app.py`, `payments_app.py`) with isolated HTTP handlers.
+
+`checkout` now fetches invoice data from `document_generator` over REST (`/api/projects/<id>/invoices/<invoice_id>`) before creating Revolut orders, instead of reading in-process shared state.
+
+`document_generator` no longer depends on OpenStack credentials; it only needs billing/PDF/Brevo configuration.
+
+`checkout` no longer depends on OpenStack credentials; it only needs Revolut config plus `DOCUMENT_GENERATOR_SERVICE_URL` to fetch invoice data.
+
+`payments` now operates directly on OpenSearch and does not require OpenStack credentials unless you choose to add external tenant-validation in front of it.
 
 ## Run the app
 
