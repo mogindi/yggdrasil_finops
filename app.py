@@ -194,13 +194,18 @@ class CostHandler(SimpleHTTPRequestHandler):
         if not self._ensure_cloudkitty_project_exists(project_id):
             return
         try:
+            if len(parts) == 5:
+                return self._json({"receipts": BILLING_SERVICE.list_receipts(project_id)})
+            if len(parts) == 6:
+                return self._json(BILLING_SERVICE.get_receipt(project_id, parts[5]))
             if len(parts) == 7 and parts[6] == "file":
                 return self._project_receipt_file_get(project_id, parts[5])
-            return self._json({"receipts": BILLING_SERVICE.list_receipts(project_id)})
         except ReceiptNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
         except BillingError as exc:
             return self._json({"error": str(exc)}, status=400)
+
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def _project_receipts_post(self, project_id: str):
         if not self._ensure_cloudkitty_project_exists(project_id):
