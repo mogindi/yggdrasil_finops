@@ -2,6 +2,7 @@
 import argparse
 import html
 import json
+import logging
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +14,7 @@ from document_service import DocumentError, DocumentService
 
 BILLING_SERVICE = BillingService(InMemoryBillingRepository())
 DOCUMENT_SERVICE = DocumentService()
+DEBUG_MODE = False
 
 
 class DocumentGeneratorHandler(BaseHTTPRequestHandler):
@@ -98,7 +100,7 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
         if q.get("send_email", ["false"])[0].lower() == "true":
             to_email = q.get("email", [None])[0] or invoice.get("customer", {}).get("email", "")
             try:
-                BrevoClient().send_pdf(to_email=to_email, subject=f"Invoice {invoice_id}", html_content=f"<p>Invoice <b>{html.escape(invoice_id)}</b></p>", filename=f"{invoice_id}.pdf", content=pdf)
+                BrevoClient(debug=DEBUG_MODE).send_pdf(to_email=to_email, subject=f"Invoice {invoice_id}", html_content=f"<p>Invoice <b>{html.escape(invoice_id)}</b></p>", filename=f"{invoice_id}.pdf", content=pdf)
             except BrevoError as exc:
                 return self._json({"error": str(exc)}, status=502)
         if q.get("view", ["pdf"])[0] == "html":
@@ -148,7 +150,12 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
 def run() -> None:
     parser = argparse.ArgumentParser(description="Document generator service")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
+    global DEBUG_MODE
+    DEBUG_MODE = args.debug
+    if DEBUG_MODE:
+        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ThreadingHTTPServer(("0.0.0.0", args.port), DocumentGeneratorHandler).serve_forever()
 
 

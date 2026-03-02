@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -18,16 +19,37 @@ class ApiResponse:
 
 
 class ApiClient:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, *, debug: bool = False):
         self.base_url = base_url.rstrip("/")
+        self.debug = debug
+        self._logger = logging.getLogger(self.__class__.__name__)
+
+    def _debug(self, message: str) -> None:
+        if self.debug:
+            self._logger.debug(message)
+
+    @staticmethod
+    def _safe_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+        if payload is None:
+            return None
+        redacted = dict(payload)
+        for key in ("api_key", "token", "password", "secret"):
+            if key in redacted:
+                redacted[key] = "***"
+        return redacted
 
     def request_raw(self, method: str, path: str) -> tuple[int, bytes, dict[str, str]]:
+        self._debug(f"HTTP request: method={method} path={path} base_url={self.base_url} raw=true")
         req = request.Request(f"{self.base_url}{path}", headers={"Accept": "*/*"}, method=method)
         try:
             with request.urlopen(req) as resp:
-                return resp.status, resp.read(), dict(resp.headers.items())
+                body = resp.read()
+                self._debug(f"HTTP response: method={method} path={path} status={resp.status} bytes={len(body)}")
+                return resp.status, body, dict(resp.headers.items())
         except error.HTTPError as exc:
-            return exc.code, exc.read(), dict(exc.headers.items())
+            body = exc.read()
+            self._debug(f"HTTP error response: method={method} path={path} status={exc.code} bytes={len(body)}")
+            return exc.code, body, dict(exc.headers.items())
 
     def request_json(self, method: str, path: str, payload: dict[str, Any] | None = None) -> ApiResponse:
         data = None
@@ -35,13 +57,16 @@ class ApiClient:
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
+        self._debug(f"HTTP request: method={method} path={path} payload={self._safe_payload(payload)}")
         req = request.Request(f"{self.base_url}{path}", data=data, headers=headers, method=method)
         try:
             with request.urlopen(req) as resp:
                 text = resp.read().decode("utf-8")
+                self._debug(f"HTTP response: method={method} path={path} status={resp.status} body={text[:500]}")
                 return ApiResponse(resp.status, json.loads(text) if text else {})
         except error.HTTPError as exc:
             body = exc.read().decode("utf-8")
+            self._debug(f"HTTP error response: method={method} path={path} status={exc.code} body={body[:500]}")
             parsed = {"error": body}
             if body:
                 try:
@@ -182,9 +207,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging for all CLI API calls")
     args = parser.parse_args(argv)
 
-    client = ApiClient(args.api_url)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    client = ApiClient(args.api_url, debug=args.debug)
 
     if args.resource == "cost":
         if args.action == "aggregate":

@@ -2,12 +2,16 @@
 import argparse
 import datetime as dt
 import json
+import logging
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
+
+
+DEBUG_MODE = False
 
 
 def _payments_partition(project_id: str) -> str:
@@ -41,7 +45,7 @@ class PaymentsHandler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
 
     def _project_payments_get(self, project_id: str, parts: list[str], query: dict[str, list[str]]):
-        client = OpenSearchClient()
+        client = OpenSearchClient(debug=DEBUG_MODE)
         partition = _payments_partition(project_id)
         try:
             if len(parts) == 5:
@@ -63,7 +67,7 @@ class PaymentsHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def _project_payments_post(self, project_id: str, parts: list[str]):
-        client = OpenSearchClient()
+        client = OpenSearchClient(debug=DEBUG_MODE)
         partition = _payments_partition(project_id)
         try:
             if len(parts) == 6 and parts[5] == "setup":
@@ -81,7 +85,7 @@ class PaymentsHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def _project_payments_put(self, project_id: str, parts: list[str]):
-        client = OpenSearchClient()
+        client = OpenSearchClient(debug=DEBUG_MODE)
         partition = _payments_partition(project_id)
         try:
             if len(parts) == 7 and parts[5] == "events":
@@ -108,7 +112,12 @@ class PaymentsHandler(BaseHTTPRequestHandler):
 def run() -> None:
     parser = argparse.ArgumentParser(description="Payments service")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
+    global DEBUG_MODE
+    DEBUG_MODE = args.debug
+    if DEBUG_MODE:
+        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ThreadingHTTPServer(("0.0.0.0", args.port), PaymentsHandler).serve_forever()
 
 
