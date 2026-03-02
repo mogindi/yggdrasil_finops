@@ -7,6 +7,7 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 - `GET /api/projects/<project_id>/costs`
   - Returns **aggregate project cost for the requested/default time range**.
   - Optionally returns a **time-series** for graphing.
+  - On startup, the cost services validate the configured currency (`CLOUDKITTY_CURRENCY`, default `DKK`) against CloudKitty `/v1/info`.
 - `GET /api/projects/<project_id>/costs/last-month`
   - Returns the same payload format as `/costs`.
   - Uses the previous calendar month window in UTC (`YYYY-MM-01T00:00:00Z` to month end `23:59:59Z`).
@@ -57,7 +58,7 @@ The service uses the standard OpenStack variables (from `openrc`):
   - `OS_REGION_NAME`
   - `OS_INTERFACE` (default: `public`)
   - `CLOUDKITTY_ENDPOINT` (override endpoint discovery)
-  - `CLOUDKITTY_CURRENCY` (default response currency: `USD`)
+  - `CLOUDKITTY_CURRENCY` (default response currency: `DKK`)
   - `OPENSEARCH_URL` (OpenSearch base URL, default: `http://localhost:9200`)
   - `OS_VERIFY=false` to disable TLS verification (not recommended)
   - `REVOLUT_API_KEY` (required for Revolut payment order creation)
@@ -97,6 +98,8 @@ Each backend now runs a dedicated application (`costs_usage_app.py`, `document_g
 `checkout` no longer depends on OpenStack credentials; it only needs Revolut config plus `DOCUMENT_GENERATOR_SERVICE_URL` to fetch invoice data.
 
 `payments` now operates directly on OpenSearch and does not require OpenStack credentials unless you choose to add external tenant-validation in front of it.
+
+
 
 ## Run the app
 
@@ -263,7 +266,7 @@ curl -X POST "http://localhost:8082/api/projects/<PROJECT_ID>/invoices" \
   -H "Content-Type: application/json" \
   -d '{
     "amount_due": 125.50,
-    "currency": "USD",
+    "currency": "DKK",
     "customer_name": "Acme Corp",
     "customer_email": "billing@acme.test",
     "description": "Monthly cloud bill"
@@ -278,7 +281,7 @@ curl -X POST "http://localhost:8082/api/projects/<PROJECT_ID>/receipts" \
   -d '{
     "invoice_id": "inv_xxx",
     "amount_paid": 125.50,
-    "currency": "USD",
+    "currency": "DKK",
     "payment_method": "wire_transfer",
     "payment_reference": "wire-2026-0001"
   }'
@@ -306,7 +309,7 @@ curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_onb
     "project_id": "proj_123",
     "invoice_id": "inv_2026_01",
     "amount": 150.00,
-    "currency": "USD",
+    "currency": "DKK",
     "direction": "inbound",
     "status": "succeeded",
     "paid_at": "2026-01-03T09:30:00Z",
@@ -319,7 +322,7 @@ curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_onb
 ```bash
 curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/balance" \
   -H "Content-Type: application/json" \
-  -d '{"currency":"USD","paid_total":150.00,"refunded_total":0.00,"net_paid":150.00}'
+  -d '{"currency":"DKK","paid_total":150.00,"refunded_total":0.00,"net_paid":150.00}'
 ```
 
 4. Check first-month cost trend:
@@ -348,7 +351,7 @@ curl -X POST "http://localhost:8082/api/projects/proj_123/payments/events/bulk" 
         "project_id": "proj_123",
         "invoice_id": "inv_2026_02",
         "amount": 90.00,
-        "currency": "USD",
+        "currency": "DKK",
         "direction": "inbound",
         "status": "succeeded",
         "paid_at": "2026-02-05T08:00:00Z"
@@ -358,7 +361,7 @@ curl -X POST "http://localhost:8082/api/projects/proj_123/payments/events/bulk" 
         "project_id": "proj_123",
         "invoice_id": "inv_2026_03",
         "amount": 95.00,
-        "currency": "USD",
+        "currency": "DKK",
         "direction": "inbound",
         "status": "succeeded",
         "paid_at": "2026-03-05T08:00:00Z"
@@ -398,7 +401,7 @@ curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_clo
     "project_id": "proj_123",
     "invoice_id": "inv_close_2026_03",
     "amount": 25.00,
-    "currency": "USD",
+    "currency": "DKK",
     "direction": "outbound",
     "status": "succeeded",
     "paid_at": "2026-03-28T15:00:00Z",
@@ -411,7 +414,7 @@ curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_clo
 ```bash
 curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/balance" \
   -H "Content-Type: application/json" \
-  -d '{"currency":"USD","paid_total":335.00,"refunded_total":335.00,"net_paid":0.00}'
+  -d '{"currency":"DKK","paid_total":335.00,"refunded_total":335.00,"net_paid":0.00}'
 ```
 
 4. Verify closed balance:

@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
+from currency import get_default_currency
 
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
@@ -89,7 +90,7 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
         return self._json({
             "project_id": project_id,
             "aggregate_cost_now": aggregate,
-            "currency": os.environ.get("CLOUDKITTY_CURRENCY", "USD"),
+            "currency": get_default_currency(),
             "time_series": series,
             "start": start.isoformat(),
             "end": end.isoformat(),
@@ -127,7 +128,7 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
         except (OpenStackAuthError, CloudKittyError) as exc:
             return self._json({"error": str(exc)}, status=502)
         monthly_series = [p for p in series if _parse_date(p["timestamp"], now) >= start]
-        return self._json({"project_id": project_id, "aggregate_cost_now": sum(p["cost"] for p in monthly_series), "currency": os.environ.get("CLOUDKITTY_CURRENCY", "USD"), "time_series": monthly_series, "start": start.isoformat(), "end": now.isoformat(), "resolution": "month"})
+        return self._json({"project_id": project_id, "aggregate_cost_now": sum(p["cost"] for p in monthly_series), "currency": get_default_currency(), "time_series": monthly_series, "start": start.isoformat(), "end": now.isoformat(), "resolution": "month"})
 
     def _project_costs_monthly_graph(self, project_id: str):
         return self._html(f"<html><body><h1>Monthly graph for {html.escape(project_id)}</h1><p>Use /costs/monthly for raw series.</p></body></html>")
@@ -175,6 +176,10 @@ def run() -> None:
     args = parser.parse_args()
     global DEBUG_MODE
     DEBUG_MODE = args.debug
+    try:
+        CloudKittyClient(debug=DEBUG_MODE).validate_currency(get_default_currency())
+    except (OpenStackAuthError, CloudKittyError) as exc:
+        raise RuntimeError(f"CloudKitty currency validation failed: {exc}") from exc
     server = ThreadingHTTPServer(("0.0.0.0", args.port), CostsUsageHandler)
     server.serve_forever()
 
