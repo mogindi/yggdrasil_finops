@@ -74,6 +74,33 @@ def build_parser() -> argparse.ArgumentParser:
     project_setup = project_sub.add_parser("setup", help="Setup payment indices for a project")
     _add_base_and_project_args(project_setup)
 
+    cost_parser = subparsers.add_parser("cost", help="Cost and usage actions")
+    cost_sub = cost_parser.add_subparsers(dest="action", required=True)
+
+    cost_aggregate = cost_sub.add_parser("aggregate", help="Fetch aggregate project costs")
+    _add_base_and_project_args(cost_aggregate)
+    cost_aggregate.add_argument("--start", help="ISO8601 start datetime")
+    cost_aggregate.add_argument("--end", help="ISO8601 end datetime")
+    cost_aggregate.add_argument("--resolution", default="month", help="Grouping resolution: hour/day/week/month")
+    cost_aggregate.add_argument("--include-series", action="store_true", help="Include time series points")
+
+    cost_last_month = cost_sub.add_parser("last-month", help="Fetch previous calendar month costs")
+    _add_base_and_project_args(cost_last_month)
+    cost_last_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month")
+    cost_last_month.add_argument("--include-series", action="store_true", help="Include time series points")
+
+    cost_month = cost_sub.add_parser("month", help="Fetch one specific calendar month costs")
+    _add_base_and_project_args(cost_month)
+    cost_month.add_argument("--month", required=True, help="Month in YYYY-MM format")
+    cost_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month")
+    cost_month.add_argument("--include-series", action="store_true", help="Include time series points")
+
+    cost_monthly = cost_sub.add_parser("monthly", help="Fetch monthly history (excluding current month)")
+    _add_base_and_project_args(cost_monthly)
+
+    cost_monthly_graph = cost_sub.add_parser("monthly-graph", help="Render monthly usage graph HTML")
+    _add_base_and_project_args(cost_monthly_graph)
+
     payment_parser = subparsers.add_parser("payment", help="Payment actions")
     payment_sub = payment_parser.add_subparsers(dest="action", required=True)
 
@@ -158,6 +185,39 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     client = ApiClient(args.api_url)
+
+    if args.resource == "cost":
+        if args.action == "aggregate":
+            params = {
+                "resolution": args.resolution,
+                "include_series": "true" if args.include_series else "false",
+            }
+            if args.start:
+                params["start"] = args.start
+            if args.end:
+                params["end"] = args.end
+            query = parse.urlencode(params)
+            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs?{query}"))
+        if args.action == "last-month":
+            params = {
+                "resolution": args.resolution,
+                "include_series": "true" if args.include_series else "false",
+            }
+            query = parse.urlencode(params)
+            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs/last-month?{query}"))
+        if args.action == "month":
+            params = {
+                "resolution": args.resolution,
+                "include_series": "true" if args.include_series else "false",
+            }
+            query = parse.urlencode(params)
+            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs/{args.month}?{query}"))
+        if args.action == "monthly":
+            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs/monthly"))
+        if args.action == "monthly-graph":
+            status, body, _headers = client.request_raw("GET", f"/api/projects/{args.project_id}/costs/monthly/graph")
+            print(body.decode("utf-8", errors="ignore"))
+            return 0 if 200 <= status < 300 else 1
 
     if args.resource == "project" and args.action == "setup":
         return _print_response(client.request_json("POST", f"/api/projects/{args.project_id}/payments/setup"))

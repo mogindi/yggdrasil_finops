@@ -25,6 +25,37 @@ class FakeResponse:
 
 
 class CliWrapperTests(unittest.TestCase):
+    def test_cost_monthly_calls_expected_endpoint(self):
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"series": []})) as mocked:
+            rc = yggdrasil_finops.main([
+                "cost",
+                "monthly",
+                "--project-id",
+                "proj_123",
+                "--api-url",
+                "http://localhost:8082",
+            ])
+        self.assertEqual(rc, 0)
+        req = mocked.call_args.args[0]
+        self.assertEqual(req.method, "GET")
+        self.assertEqual(req.full_url, "http://localhost:8082/api/projects/proj_123/costs/monthly")
+
+    def test_cost_monthly_graph_returns_html(self):
+        with patch(
+            "urllib.request.urlopen",
+            return_value=FakeResponse(raw_body=b"<html><body>graph</body></html>", headers={"Content-Type": "text/html"}),
+        ) as mocked:
+            rc = yggdrasil_finops.main([
+                "cost",
+                "monthly-graph",
+                "--project-id",
+                "proj_123",
+            ])
+        self.assertEqual(rc, 0)
+        req = mocked.call_args.args[0]
+        self.assertEqual(req.method, "GET")
+        self.assertTrue(req.full_url.endswith("/api/projects/proj_123/costs/monthly/graph"))
+
     def test_project_setup_calls_payments_setup_endpoint(self):
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"ok": True})) as mocked:
             rc = yggdrasil_finops.main([
