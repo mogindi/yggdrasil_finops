@@ -158,6 +158,46 @@ python yggdrasil_finops.py receipt list --project-id proj_123
 
 Set `YGGDRASIL_FINOPS_API_URL` (or pass `--api-url`) if your API is not on `http://localhost:8082`.
 
+End-to-end customer lifecycle examples (CLI):
+
+```bash
+# 1) Customer onboarding (initialize project + first invoice)
+python yggdrasil_finops.py project setup --project-id cust_acme_001
+python yggdrasil_finops.py invoice create \
+  --project-id cust_acme_001 \
+  --amount-due 250.00 \
+  --customer-name "Acme Corp" \
+  --customer-email billing@acme.example \
+  --due-at 2026-02-01T00:00:00Z \
+  --description "Initial onboarding month"
+
+# 2) Normal monthly usage + graphing
+python yggdrasil_finops.py cost month \
+  --project-id cust_acme_001 \
+  --month 2026-01 \
+  --resolution day \
+  --include-series
+python yggdrasil_finops.py cost monthly --project-id cust_acme_001
+python yggdrasil_finops.py cost monthly-graph --project-id cust_acme_001 > monthly_graph.html
+
+# 3) Customer off-boarding (final invoice + final receipt, then verify history)
+python yggdrasil_finops.py invoice create \
+  --project-id cust_acme_001 \
+  --amount-due 89.50 \
+  --customer-name "Acme Corp" \
+  --customer-email billing@acme.example \
+  --due-at 2026-03-01T00:00:00Z \
+  --description "Final off-boarding charges"
+python yggdrasil_finops.py receipt create \
+  --project-id cust_acme_001 \
+  --invoice-id <FINAL_INVOICE_ID> \
+  --amount-paid 89.50 \
+  --paid-at 2026-03-02T11:00:00Z
+python yggdrasil_finops.py invoice list --project-id cust_acme_001
+python yggdrasil_finops.py receipt list --project-id cust_acme_001
+```
+
+
 PDF commands in CLI:
 
 ```bash
