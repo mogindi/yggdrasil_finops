@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest, ReceiptNotFoundError
 from brevo_client import BrevoClient, BrevoError
 from document_service import DocumentError, DocumentService
+from currency import get_default_currency
 
 BILLING_SERVICE = BillingService(InMemoryBillingRepository())
 DOCUMENT_SERVICE = DocumentService()
@@ -68,7 +69,7 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
 
     def _project_invoices_post(self, project_id: str):
         body = self._read_json_body()
-        req = InvoiceCreateRequest(float(body.get("amount_due", 0)), body.get("currency", "USD"), body.get("customer_name", ""), body.get("customer_email", ""), body.get("due_at"), body.get("description", ""))
+        req = InvoiceCreateRequest(float(body.get("amount_due", 0)), body.get("currency", get_default_currency()), body.get("customer_name", ""), body.get("customer_email", ""), body.get("due_at"), body.get("description", ""))
         return self._json(BILLING_SERVICE.create_invoice(project_id, req), status=201)
 
     def _project_receipts_get(self, project_id: str, parts: list[str]):
@@ -81,7 +82,7 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
 
     def _project_receipts_post(self, project_id: str):
         body = self._read_json_body()
-        req = ReceiptCreateRequest(body.get("invoice_id", ""), float(body.get("amount_paid", 0)), body.get("currency", "USD"), body.get("paid_at"), body.get("payment_method", "unknown"), body.get("payment_reference", ""))
+        req = ReceiptCreateRequest(body.get("invoice_id", ""), float(body.get("amount_paid", 0)), body.get("currency", get_default_currency()), body.get("paid_at"), body.get("payment_method", "unknown"), body.get("payment_reference", ""))
         try:
             return self._json(BILLING_SERVICE.create_receipt(project_id, req), status=201)
         except (InvoiceNotFoundError, BillingError) as exc:

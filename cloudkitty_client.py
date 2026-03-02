@@ -274,6 +274,36 @@ class CloudKittyClient:
         series.sort(key=lambda x: x["timestamp"])
         return series
 
+    @staticmethod
+    def _find_currency_value(node: Any) -> str | None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.lower() == "currency" and isinstance(value, str):
+                    return value.upper()
+                nested = CloudKittyClient._find_currency_value(value)
+                if nested:
+                    return nested
+        elif isinstance(node, list):
+            for item in node:
+                nested = CloudKittyClient._find_currency_value(item)
+                if nested:
+                    return nested
+        return None
+
+    def get_cloudkitty_currency(self) -> str | None:
+        info = self.request("GET", "/v1/info")
+        return self._find_currency_value(info)
+
+    def validate_currency(self, expected_currency: str) -> None:
+        configured = self.get_cloudkitty_currency()
+        if not configured:
+            raise CloudKittyError("Could not determine CloudKitty configured currency from /v1/info")
+        expected = expected_currency.upper()
+        if configured != expected:
+            raise CloudKittyError(
+                f"CloudKitty currency mismatch: expected '{expected}' from CLOUDKITTY_CURRENCY, got '{configured}' from CloudKitty"
+            )
+
     def ensure_default_hashmap_pricing(self, pricing: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
         self._debug("Ensuring default hashmap pricing")
         defaults = pricing or {

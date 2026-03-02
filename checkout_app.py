@@ -9,6 +9,7 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
+from currency import get_default_currency
 
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080")
 DEBUG_MODE = False
@@ -61,7 +62,7 @@ class CheckoutHandler(BaseHTTPRequestHandler):
             response = client.create_order(
                 order_id=invoice_id,
                 amount=float(body.get("amount", remaining_amount)),
-                currency=body.get("currency", invoice.get("currency", "USD")),
+                currency=body.get("currency", invoice.get("currency", get_default_currency())),
                 description=body.get("description", invoice.get("description", "Project invoice payment")),
                 customer_email=invoice.get("customer", {}).get("email", ""),
                 success_url=body.get("success_url"),

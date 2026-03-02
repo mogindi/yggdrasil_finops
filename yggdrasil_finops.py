@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, parse, request
+from currency import get_default_currency
 
 
 DEFAULT_BASE_URL = os.environ.get("YGGDRASIL_FINOPS_API_URL", "http://localhost:8082")
@@ -134,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     payment_create.add_argument("--event-id", required=True)
     payment_create.add_argument("--invoice-id", required=True)
     payment_create.add_argument("--amount", required=True, type=float)
-    payment_create.add_argument("--currency", default="USD")
+    payment_create.add_argument("--currency", default=get_default_currency())
     payment_create.add_argument("--status", default="captured")
     payment_create.add_argument("--payment-direction", default="inbound")
     payment_create.add_argument("--paid-at", required=True, help="ISO8601 datetime")
@@ -156,7 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     invoice_create = invoice_sub.add_parser("create", help="Create an invoice")
     _add_base_and_project_args(invoice_create)
     invoice_create.add_argument("--amount-due", required=True, type=float)
-    invoice_create.add_argument("--currency", default="USD")
+    invoice_create.add_argument("--currency", default=get_default_currency())
     invoice_create.add_argument("--customer-name", required=True)
     invoice_create.add_argument("--customer-email", required=True)
     invoice_create.add_argument("--due-at", required=True)
@@ -185,7 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_base_and_project_args(receipt_create)
     receipt_create.add_argument("--invoice-id", required=True)
     receipt_create.add_argument("--amount-paid", required=True, type=float)
-    receipt_create.add_argument("--currency", default="USD")
+    receipt_create.add_argument("--currency", default=get_default_currency())
     receipt_create.add_argument("--paid-at", required=True)
     receipt_create.add_argument("--payment-method", default="unknown")
     receipt_create.add_argument("--payment-reference", default="")

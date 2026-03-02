@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest, ReceiptNotFoundError
 from brevo_client import BrevoClient, BrevoError
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
+from currency import get_default_currency
 from document_service import DocumentError, DocumentService
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
 from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
@@ -180,7 +181,7 @@ class CostHandler(SimpleHTTPRequestHandler):
         try:
             request = InvoiceCreateRequest(
                 amount_due=float(body.get("amount_due", 0)),
-                currency=body.get("currency", "USD"),
+                currency=body.get("currency", get_default_currency()),
                 customer_name=body.get("customer_name", ""),
                 customer_email=body.get("customer_email", ""),
                 due_at=body.get("due_at"),
@@ -215,7 +216,7 @@ class CostHandler(SimpleHTTPRequestHandler):
             request = ReceiptCreateRequest(
                 invoice_id=body.get("invoice_id", ""),
                 amount_paid=float(body.get("amount_paid", 0)),
-                currency=body.get("currency", "USD"),
+                currency=body.get("currency", get_default_currency()),
                 paid_at=body.get("paid_at"),
                 payment_method=body.get("payment_method", "unknown"),
                 payment_reference=body.get("payment_reference", ""),
@@ -249,7 +250,7 @@ class CostHandler(SimpleHTTPRequestHandler):
             response = client.create_order(
                 order_id=invoice_id,
                 amount=float(body.get("amount", remaining_amount)),
-                currency=body.get("currency", invoice.get("currency", "USD")),
+                currency=body.get("currency", invoice.get("currency", get_default_currency())),
                 description=body.get("description", invoice.get("description", "Project invoice payment")),
                 customer_email=invoice.get("customer_email", ""),
                 success_url=body.get("success_url"),
@@ -332,7 +333,7 @@ class CostHandler(SimpleHTTPRequestHandler):
                 return self._json(
                     client.upsert_balance(
                         project_id,
-                        body.get("currency", "USD"),
+                        body.get("currency", get_default_currency()),
                         float(body.get("paid_total", 0)),
                         float(body.get("refunded_total", 0)),
                         float(body.get("net_paid", 0)),
@@ -365,7 +366,7 @@ class CostHandler(SimpleHTTPRequestHandler):
             {
                 "project_id": project_id,
                 "aggregate_cost_now": aggregate,
-                "currency": os.environ.get("CLOUDKITTY_CURRENCY", "USD"),
+                "currency": get_default_currency(),
                 "time_series": series,
                 "start": start.isoformat(),
                 "end": end.isoformat(),
@@ -414,7 +415,7 @@ class CostHandler(SimpleHTTPRequestHandler):
             {
                 "project_id": project_id,
                 "aggregate_cost_now": aggregate,
-                "currency": os.environ.get("CLOUDKITTY_CURRENCY", "USD"),
+                "currency": get_default_currency(),
                 "time_series": monthly_series,
                 "start": start.isoformat(),
                 "end": end.isoformat(),
@@ -485,7 +486,7 @@ class CostHandler(SimpleHTTPRequestHandler):
 <body>
   <div class=\"card\">
     <h1>Monthly Cost History</h1>
-    <p class=\"subtitle\">Project: <code>{html.escape(project_id)}</code> • Currency: {html.escape(os.environ.get('CLOUDKITTY_CURRENCY', 'USD'))}</p>
+    <p class=\"subtitle\">Project: <code>{html.escape(project_id)}</code> • Currency: {html.escape(get_default_currency())}</p>
     <svg width=\"{chart_width}\" height=\"{chart_height}\" role=\"img\" aria-label=\"Monthly cloud cost graph\">
       <rect x=\"0\" y=\"0\" width=\"{chart_width}\" height=\"{chart_height}\" fill=\"white\" />
       <line x1=\"{left_pad}\" y1=\"20\" x2=\"{left_pad}\" y2=\"{chart_height - bottom_pad}\" stroke=\"#9ca3af\" />
@@ -622,6 +623,10 @@ def run() -> None:
 
     global DEBUG_MODE
     DEBUG_MODE = args.debug
+    try:
+        CloudKittyClient(debug=DEBUG_MODE).validate_currency(get_default_currency())
+    except (OpenStackAuthError, CloudKittyError) as exc:
+        raise RuntimeError(f"CloudKitty currency validation failed: {exc}") from exc
 
     port = args.port
     server = ThreadingHTTPServer(("0.0.0.0", port), CostHandler)

@@ -2,6 +2,8 @@ import base64
 import html
 from pathlib import Path
 
+from currency import get_default_currency
+
 
 class DocumentError(Exception):
     pass
@@ -117,8 +119,8 @@ class DocumentService:
             f"Customer: {invoice.get('customer', {}).get('name', '')}",
             f"Customer Email: {invoice.get('customer', {}).get('email', '')}",
             f"Description: {invoice.get('description', '')}",
-            f"Amount Due: {invoice.get('amount_due', 0):.2f} {invoice.get('currency', 'USD')}",
-            f"Amount Paid: {invoice.get('amount_paid', 0):.2f} {invoice.get('currency', 'USD')}",
+            f"Amount Due: {invoice.get('amount_due', 0):.2f} {invoice.get('currency', get_default_currency())}",
+            f"Amount Paid: {invoice.get('amount_paid', 0):.2f} {invoice.get('currency', get_default_currency())}",
             f"Status: {invoice.get('status', '')}",
             f"Created At: {invoice.get('created_at', '')}",
             f"Due At: {invoice.get('due_at', '')}",
@@ -130,7 +132,7 @@ class DocumentService:
             f"Receipt ID: {receipt.get('receipt_id', '')}",
             f"Invoice ID: {receipt.get('invoice_id', '')}",
             f"Project ID: {receipt.get('project_id', '')}",
-            f"Amount Paid: {receipt.get('amount_paid', 0):.2f} {receipt.get('currency', 'USD')}",
+            f"Amount Paid: {receipt.get('amount_paid', 0):.2f} {receipt.get('currency', get_default_currency())}",
             f"Paid At: {receipt.get('paid_at', '')}",
             f"Payment Method: {receipt.get('payment_method', '')}",
             f"Payment Reference: {receipt.get('payment_reference', '')}",
