@@ -28,8 +28,8 @@ class FakeOpenSearchClient:
     def search_project_payments(self, project_id, size=25):
         return {"hits": {"hits": []}}
 
-    def upsert_payment_event(self, year_month, event_id, document):
-        self.__class__.upsert_calls.append((year_month, event_id, document))
+    def upsert_payment_event(self, partition, event_id, document):
+        self.__class__.upsert_calls.append((partition, event_id, document))
         return {"result": "created", "_id": event_id}
 
 
@@ -89,6 +89,14 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         metadata_mapping = body["template"]["mappings"]["properties"]["metadata"]
         self.assertEqual(metadata_mapping, {"type": "object", "enabled": False})
 
+    def test_create_payments_index_uses_project_partition_name(self):
+        client = OpenSearchClient()
+        with patch.object(client, "_http_json", return_value={"acknowledged": True}) as http_mock:
+            client.create_payments_index("project:Acme/West")
+
+        self.assertEqual(http_mock.call_args.args[0], "PUT")
+        self.assertEqual(http_mock.call_args.args[1], "/payments-project-acme-west")
+
     def test_create_payments_index_is_idempotent_when_index_exists(self):
         client = OpenSearchClient()
         exc_body = json.dumps(
@@ -104,7 +112,7 @@ class OpenSearchPaymentsTests(unittest.TestCase):
             "_http_json",
             side_effect=OpenSearchApiError("OpenSearch request failed (400)", status_code=400, body=exc_body),
         ):
-            payload = client.create_payments_index("2026-02")
+            payload = client.create_payments_index("project:proj-123")
 
         self.assertTrue(payload["acknowledged"])
         self.assertTrue(payload["already_exists"])
@@ -114,14 +122,14 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         with patch("app.OpenSearchClient", FakeOpenSearchClient), patch("app.CloudKittyClient", FakeCloudKittyClient):
             status, body = self._request(
                 "PUT",
-                "/api/projects/proj-123/payments/events/evt_1?month=2026-02",
+                "/api/projects/proj-123/payments/events/evt_1",
                 body={"event_id": "evt_1", "amount": 99.95, "status": "succeeded"},
             )
 
         self.assertEqual(status, 201)
         self.assertEqual(body["result"], "created")
-        year_month, event_id, doc = FakeOpenSearchClient.upsert_calls[0]
-        self.assertEqual(year_month, "2026-02")
+        partition, event_id, doc = FakeOpenSearchClient.upsert_calls[0]
+        self.assertEqual(partition, "project:proj-123")
         self.assertEqual(event_id, "evt_1")
         self.assertEqual(doc["project_id"], "proj-123")
 

@@ -154,16 +154,16 @@ This is a practical lifecycle walkthrough for a single tenant project (`proj_123
 
 ### 1) Onboarding month (`2026-01`)
 
-1. Create OpenSearch payment indices and mappings for the month:
+1. Create OpenSearch payment index and mappings during onboarding:
 
 ```bash
-curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup?month=2026-01"
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup"
 ```
 
 2. Record an initial customer deposit/payment event:
 
 ```bash
-curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_onboard_001?month=2026-01" \
+curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_onboard_001" \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": "proj_123",
@@ -193,16 +193,16 @@ curl "http://localhost:8082/api/projects/proj_123/costs/2026-01?resolution=day&i
 
 ### 2) Active usage over a couple of months (`2026-02`, `2026-03`)
 
-1. Prepare next month index:
+1. Reuse the same project payments index (no monthly setup needed):
 
 ```bash
-curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup?month=2026-02"
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup"
 ```
 
 2. Bulk ingest recurring payments for February:
 
 ```bash
-curl -X POST "http://localhost:8082/api/projects/proj_123/payments/events/bulk?month=2026-02" \
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/events/bulk" \
   -H "Content-Type: application/json" \
   -d '{
     "events": [
@@ -255,7 +255,7 @@ curl "http://localhost:8082/api/projects/proj_123/costs/last-month?resolution=da
 2. Add a final refund/adjustment event if needed:
 
 ```bash
-curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_close_001?month=2026-03" \
+curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/events/evt_close_001" \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": "proj_123",
@@ -297,14 +297,15 @@ Current design:
 
 The service now exposes OpenSearch-backed payment endpoints under `/api/projects/<PROJECT_ID>/payments` and maps the template field to `project_id`.
 
-- `POST /api/projects/<PROJECT_ID>/payments/setup?month=YYYY-MM`
-  - Creates `payments_template`, `payments-YYYY-MM`, and `project-balances` indices.
+- `POST /api/projects/<PROJECT_ID>/payments/setup`
+  - Creates `payments_template`, a payments index, and `project-balances`.
+  - Creates a long-lived per-project index `payments-project-<project_id>` for one-time onboarding.
   - Template compatibility note: `metadata` is stored as a non-indexed object (`enabled: false`) so setup works on older OpenSearch clusters that do not support `flattened` mappings.
-- `PUT /api/projects/<PROJECT_ID>/payments/events/<EVENT_ID>?month=YYYY-MM`
+- `PUT /api/projects/<PROJECT_ID>/payments/events/<EVENT_ID>`
   - Upserts a payment event using event id as document `_id` (idempotent).
-- `POST /api/projects/<PROJECT_ID>/payments/events/bulk?month=YYYY-MM`
+- `POST /api/projects/<PROJECT_ID>/payments/events/bulk`
   - Bulk ingests events (`{"events": [...]}`).
-- `GET /api/projects/<PROJECT_ID>/payments/events/<EVENT_ID>?month=YYYY-MM`
+- `GET /api/projects/<PROJECT_ID>/payments/events/<EVENT_ID>`
   - Fetches a payment event by id.
 - `GET /api/projects/<PROJECT_ID>/payments`
   - Lists payments for the project sorted by `paid_at desc`.
@@ -316,14 +317,14 @@ The service now exposes OpenSearch-backed payment endpoints under `/api/projects
   - Upserts a current balance doc (`paid_total`, `refunded_total`, `net_paid`, `currency`).
 - `GET /api/projects/<PROJECT_ID>/payments/balance`
   - Reads current balance doc.
-- `GET /api/projects/<PROJECT_ID>/payments/mapping?month=YYYY-MM`
-- `GET /api/projects/<PROJECT_ID>/payments/settings?month=YYYY-MM`
-- `POST /api/projects/<PROJECT_ID>/payments/refresh?month=YYYY-MM`
+- `GET /api/projects/<PROJECT_ID>/payments/mapping`
+- `GET /api/projects/<PROJECT_ID>/payments/settings`
+- `POST /api/projects/<PROJECT_ID>/payments/refresh`
 
 Example setup call:
 
 ```bash
-curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup?month=2026-02"
+curl -X POST "http://localhost:8082/api/projects/proj_123/payments/setup"
 ```
 
 If setup still fails, verify `OPENSEARCH_URL` points to the expected cluster and check your OpenSearch version supports composable index templates (`/_index_template`).

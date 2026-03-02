@@ -50,8 +50,8 @@ def _start_of_current_month_utc(now: dt.datetime) -> dt.datetime:
     return now.astimezone(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _default_year_month() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m")
+def _payments_partition(project_id: str) -> str:
+    return f"project:{project_id}"
 
 
 def _start_of_month_utc(moment: dt.datetime) -> dt.datetime:
@@ -243,13 +243,13 @@ class CostHandler(SimpleHTTPRequestHandler):
         if not self._ensure_cloudkitty_project_exists(project_id):
             return
         client = OpenSearchClient(debug=DEBUG_MODE)
-        year_month = query.get("month", [_default_year_month()])[0]
+        payments_partition = _payments_partition(project_id)
         try:
             if len(parts) == 5:
                 size = int(query.get("size", ["25"])[0])
                 return self._json(client.search_project_payments(project_id, size=size))
             if len(parts) == 7 and parts[5] == "events":
-                return self._json(client.get_payment_event(year_month, parts[6]))
+                return self._json(client.get_payment_event(payments_partition, parts[6]))
             if len(parts) == 7 and parts[5] == "invoices":
                 return self._json(client.search_project_invoice_payments(project_id, parts[6]))
             if len(parts) == 6 and parts[5] == "total-paid":
@@ -257,9 +257,9 @@ class CostHandler(SimpleHTTPRequestHandler):
             if len(parts) == 6 and parts[5] == "balance":
                 return self._json(client.get_balance(project_id))
             if len(parts) == 6 and parts[5] == "mapping":
-                return self._json(client.get_index_mapping(year_month))
+                return self._json(client.get_index_mapping(payments_partition))
             if len(parts) == 6 and parts[5] == "settings":
-                return self._json(client.get_index_settings(year_month))
+                return self._json(client.get_index_settings(payments_partition))
         except (OpenSearchApiError, OpenSearchError) as exc:
             return self._json({"error": str(exc), "opensearch_url": client.endpoint}, status=502)
 
@@ -269,12 +269,12 @@ class CostHandler(SimpleHTTPRequestHandler):
         if not self._ensure_cloudkitty_project_exists(project_id):
             return
         client = OpenSearchClient(debug=DEBUG_MODE)
-        year_month = query.get("month", [_default_year_month()])[0]
+        payments_partition = _payments_partition(project_id)
         try:
             if len(parts) == 6 and parts[5] == "setup":
                 payload = {
                     "template": client.create_payments_template(),
-                    "payments_index": client.create_payments_index(year_month),
+                    "payments_index": client.create_payments_index(payments_partition),
                     "balances_index": client.create_balances_index(),
                 }
                 return self._json(payload, status=201)
@@ -283,9 +283,9 @@ class CostHandler(SimpleHTTPRequestHandler):
                 events = body.get("events", [])
                 for event in events:
                     event["project_id"] = project_id
-                return self._json(client.bulk_payment_events(events, year_month), status=201)
+                return self._json(client.bulk_payment_events(events, payments_partition), status=201)
             if len(parts) == 6 and parts[5] == "refresh":
-                return self._json(client.refresh_index(year_month))
+                return self._json(client.refresh_index(payments_partition))
         except (OpenSearchApiError, OpenSearchError) as exc:
             return self._json({"error": str(exc), "opensearch_url": client.endpoint}, status=502)
 
@@ -295,13 +295,13 @@ class CostHandler(SimpleHTTPRequestHandler):
         if not self._ensure_cloudkitty_project_exists(project_id):
             return
         client = OpenSearchClient(debug=DEBUG_MODE)
-        year_month = query.get("month", [_default_year_month()])[0]
+        payments_partition = _payments_partition(project_id)
         try:
             if len(parts) == 7 and parts[5] == "events":
                 body = self._read_json_body()
                 body["project_id"] = project_id
                 body.setdefault("ingested_at", dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat())
-                return self._json(client.upsert_payment_event(year_month, parts[6], body), status=201)
+                return self._json(client.upsert_payment_event(payments_partition, parts[6], body), status=201)
             if len(parts) == 6 and parts[5] == "balance":
                 body = self._read_json_body()
                 return self._json(
