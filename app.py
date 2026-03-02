@@ -9,8 +9,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest
+from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest, ReceiptNotFoundError
+from brevo_client import BrevoClient, BrevoError
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
+from document_service import DocumentError, DocumentService
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
 from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
 
@@ -18,6 +20,7 @@ from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
 BILLING_SERVICE = BillingService(InMemoryBillingRepository())
+DOCUMENT_SERVICE = DocumentService()
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -92,7 +95,7 @@ class CostHandler(SimpleHTTPRequestHandler):
                 return self._project_invoices_get(project_id, parts)
             if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "receipts":
                 project_id = parts[3]
-                return self._project_receipts_get(project_id)
+                return self._project_receipts_get(project_id, parts)
             if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
                 project_id = parts[3]
                 return self._project_payments_get(project_id, parts, parse_qs(parsed.query))
@@ -150,6 +153,8 @@ class CostHandler(SimpleHTTPRequestHandler):
                 return self._json({"invoices": BILLING_SERVICE.list_invoices(project_id)})
             if len(parts) == 6:
                 return self._json(BILLING_SERVICE.get_invoice(project_id, parts[5]))
+            if len(parts) == 7 and parts[6] == "file":
+                return self._project_invoice_file_get(project_id, parts[5])
         except InvoiceNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
         except BillingError as exc:
@@ -174,11 +179,15 @@ class CostHandler(SimpleHTTPRequestHandler):
         except (TypeError, ValueError) as exc:
             return self._json({"error": f"Invalid invoice payload: {exc}"}, status=400)
 
-    def _project_receipts_get(self, project_id: str):
+    def _project_receipts_get(self, project_id: str, parts: list[str]):
         if not self._ensure_cloudkitty_project_exists(project_id):
             return
         try:
+            if len(parts) == 7 and parts[6] == "file":
+                return self._project_receipt_file_get(project_id, parts[5])
             return self._json({"receipts": BILLING_SERVICE.list_receipts(project_id)})
+        except ReceiptNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
         except BillingError as exc:
             return self._json({"error": str(exc)}, status=400)
 
@@ -476,6 +485,74 @@ class CostHandler(SimpleHTTPRequestHandler):
 </html>"""
         return self._html(page)
 
+
+    def _project_invoice_file_get(self, project_id: str, invoice_id: str):
+        parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        logo_path = query.get("logo_path", [None])[0]
+        view = query.get("view", ["pdf"])[0]
+        download = query.get("download", ["false"])[0].lower() == "true"
+        send_email = query.get("send_email", ["false"])[0].lower() == "true"
+        email_to = query.get("email", [None])[0]
+
+        invoice = BILLING_SERVICE.get_invoice(project_id, invoice_id)
+        try:
+            pdf_bytes = DOCUMENT_SERVICE.build_invoice_pdf(invoice, logo_path=logo_path)
+        except DocumentError as exc:
+            return self._json({"error": str(exc)}, status=400)
+
+        filename = f"{invoice_id}.pdf"
+        if send_email:
+            recipient = email_to or invoice.get("customer", {}).get("email", "")
+            try:
+                BrevoClient().send_pdf(
+                    to_email=recipient,
+                    subject=f"Invoice {invoice_id}",
+                    html_content=f"<p>Please find invoice <b>{html.escape(invoice_id)}</b> attached.</p>",
+                    filename=filename,
+                    content=pdf_bytes,
+                )
+            except BrevoError as exc:
+                return self._json({"error": str(exc)}, status=502)
+
+        if view == "html":
+            return self._html(DOCUMENT_SERVICE.build_pdf_html_page(f"Invoice {invoice_id}", filename, pdf_bytes))
+        return self._pdf(pdf_bytes, filename=filename, download=download)
+
+    def _project_receipt_file_get(self, project_id: str, receipt_id: str):
+        parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        logo_path = query.get("logo_path", [None])[0]
+        view = query.get("view", ["pdf"])[0]
+        download = query.get("download", ["false"])[0].lower() == "true"
+        send_email = query.get("send_email", ["false"])[0].lower() == "true"
+        email_to = query.get("email", [None])[0]
+
+        receipt = BILLING_SERVICE.get_receipt(project_id, receipt_id)
+        invoice = BILLING_SERVICE.get_invoice(project_id, receipt["invoice_id"])
+        try:
+            pdf_bytes = DOCUMENT_SERVICE.build_receipt_pdf(receipt, invoice, logo_path=logo_path)
+        except DocumentError as exc:
+            return self._json({"error": str(exc)}, status=400)
+
+        filename = f"{receipt_id}.pdf"
+        if send_email:
+            recipient = email_to or invoice.get("customer", {}).get("email", "")
+            try:
+                BrevoClient().send_pdf(
+                    to_email=recipient,
+                    subject=f"Receipt {receipt_id}",
+                    html_content=f"<p>Please find receipt <b>{html.escape(receipt_id)}</b> attached.</p>",
+                    filename=filename,
+                    content=pdf_bytes,
+                )
+            except BrevoError as exc:
+                return self._json({"error": str(exc)}, status=502)
+
+        if view == "html":
+            return self._html(DOCUMENT_SERVICE.build_pdf_html_page(f"Receipt {receipt_id}", filename, pdf_bytes))
+        return self._pdf(pdf_bytes, filename=filename, download=download)
+
     def _serve_file(self, path: Path, content_type: str):
         if not path.exists() or not path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND, "File not found")
@@ -502,6 +579,15 @@ class CostHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _pdf(self, payload: bytes, filename: str, download: bool = False, status: int = 200):
+        self.send_response(status)
+        disposition = "attachment" if download else "inline"
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f'{disposition}; filename="{filename}"')
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     @staticmethod
     def _content_type(path: str) -> str:

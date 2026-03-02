@@ -5,7 +5,7 @@ import os
 import sys
 from dataclasses import dataclass
 from typing import Any
-from urllib import error, request
+from urllib import error, parse, request
 
 
 DEFAULT_BASE_URL = os.environ.get("YGGDRASIL_FINOPS_API_URL", "http://localhost:8082")
@@ -20,6 +20,14 @@ class ApiResponse:
 class ApiClient:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
+
+    def request_raw(self, method: str, path: str) -> tuple[int, bytes, dict[str, str]]:
+        req = request.Request(f"{self.base_url}{path}", headers={"Accept": "*/*"}, method=method)
+        try:
+            with request.urlopen(req) as resp:
+                return resp.status, resp.read(), dict(resp.headers.items())
+        except error.HTTPError as exc:
+            return exc.code, exc.read(), dict(exc.headers.items())
 
     def request_json(self, method: str, path: str, payload: dict[str, Any] | None = None) -> ApiResponse:
         data = None
@@ -109,6 +117,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_base_and_project_args(invoice_show)
     invoice_show.add_argument("--invoice-id", required=True)
 
+    invoice_file = invoice_sub.add_parser("file", help="Generate/view/send invoice PDF")
+    _add_base_and_project_args(invoice_file)
+    invoice_file.add_argument("--invoice-id", required=True)
+    invoice_file.add_argument("--logo-path")
+    invoice_file.add_argument("--download-path", help="Save PDF to local path")
+    invoice_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
+    invoice_file.add_argument("--send-email", action="store_true", help="Send PDF using Brevo API")
+    invoice_file.add_argument("--email", help="Override recipient email")
+
     receipt_parser = subparsers.add_parser("receipt", help="Receipt actions")
     receipt_sub = receipt_parser.add_subparsers(dest="action", required=True)
 
@@ -123,6 +140,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     receipt_list = receipt_sub.add_parser("list", help="List receipts")
     _add_base_and_project_args(receipt_list)
+
+    receipt_file = receipt_sub.add_parser("file", help="Generate/view/send receipt PDF")
+    _add_base_and_project_args(receipt_file)
+    receipt_file.add_argument("--receipt-id", required=True)
+    receipt_file.add_argument("--logo-path")
+    receipt_file.add_argument("--download-path", help="Save PDF to local path")
+    receipt_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
+    receipt_file.add_argument("--send-email", action="store_true", help="Send PDF using Brevo API")
+    receipt_file.add_argument("--email", help="Override recipient email")
 
     return parser
 
@@ -168,6 +194,33 @@ def main(argv: list[str] | None = None) -> int:
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/invoices"))
     if args.resource == "invoice" and args.action == "show":
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/invoices/{args.invoice_id}"))
+    if args.resource == "invoice" and args.action == "file":
+        params = {
+            "view": "html" if args.html else "pdf",
+            "download": "true" if args.download_path else "false",
+            "send_email": "true" if args.send_email else "false",
+        }
+        if args.logo_path:
+            params["logo_path"] = args.logo_path
+        if args.email:
+            params["email"] = args.email
+        query = parse.urlencode(params)
+        status, body, headers = client.request_raw("GET", f"/api/projects/{args.project_id}/invoices/{args.invoice_id}/file?{query}")
+        if args.download_path and 200 <= status < 300:
+            with open(args.download_path, "wb") as fp:
+                fp.write(body)
+            print(json.dumps({"saved_to": args.download_path, "status": status}, indent=2, sort_keys=True))
+            return 0
+        content_type = headers.get("Content-Type", "")
+        if content_type.startswith("text/html"):
+            print(body.decode("utf-8"))
+            return 0 if 200 <= status < 300 else 1
+        if content_type.startswith("application/pdf"):
+            encoded = body.hex()
+            print(json.dumps({"status": status, "pdf_hex": encoded[:200]}, indent=2, sort_keys=True))
+            return 0 if 200 <= status < 300 else 1
+        print(body.decode("utf-8", errors="ignore"))
+        return 0 if 200 <= status < 300 else 1
 
     if args.resource == "receipt" and args.action == "create":
         payload = {
@@ -181,6 +234,33 @@ def main(argv: list[str] | None = None) -> int:
         return _print_response(client.request_json("POST", f"/api/projects/{args.project_id}/receipts", payload))
     if args.resource == "receipt" and args.action == "list":
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/receipts"))
+    if args.resource == "receipt" and args.action == "file":
+        params = {
+            "view": "html" if args.html else "pdf",
+            "download": "true" if args.download_path else "false",
+            "send_email": "true" if args.send_email else "false",
+        }
+        if args.logo_path:
+            params["logo_path"] = args.logo_path
+        if args.email:
+            params["email"] = args.email
+        query = parse.urlencode(params)
+        status, body, headers = client.request_raw("GET", f"/api/projects/{args.project_id}/receipts/{args.receipt_id}/file?{query}")
+        if args.download_path and 200 <= status < 300:
+            with open(args.download_path, "wb") as fp:
+                fp.write(body)
+            print(json.dumps({"saved_to": args.download_path, "status": status}, indent=2, sort_keys=True))
+            return 0
+        content_type = headers.get("Content-Type", "")
+        if content_type.startswith("text/html"):
+            print(body.decode("utf-8"))
+            return 0 if 200 <= status < 300 else 1
+        if content_type.startswith("application/pdf"):
+            encoded = body.hex()
+            print(json.dumps({"status": status, "pdf_hex": encoded[:200]}, indent=2, sort_keys=True))
+            return 0 if 200 <= status < 300 else 1
+        print(body.decode("utf-8", errors="ignore"))
+        return 0 if 200 <= status < 300 else 1
 
     parser.error("Unsupported command")
     return 2
