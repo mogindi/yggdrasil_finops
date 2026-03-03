@@ -39,11 +39,28 @@ def test_cloudkitty_currency_validation_falls_back_from_405_info_endpoint(monkey
     client = CloudKittyClient()
 
     def fake_request(method, path, params=None, body=None):
-        if path == "/v1/info":
+        if path == "/v1/info" and method == "GET":
             raise CloudKittyApiError("method not allowed", status_code=405, url=f"https://ck.example{path}")
-        if path == "/v1/info/":
+        if path == "/v1/info" and method == "POST":
             return {"info": {"currency": "dkk"}}
         return {}
 
     with patch.object(client, "request", side_effect=fake_request):
         client.validate_currency("DKK")
+
+
+def test_cloudkitty_currency_validation_raises_cloudkittyerror_when_info_endpoints_reject_methods(monkeypatch):
+    monkeypatch.setenv("OS_AUTH_URL", "https://keystone.example/v3")
+    monkeypatch.setenv("OS_USERNAME", "u")
+    monkeypatch.setenv("OS_PASSWORD", "p")
+    monkeypatch.setenv("OS_PROJECT_ID", "proj")
+    monkeypatch.setenv("CLOUDKITTY_ENDPOINT", "https://ck.example")
+
+    client = CloudKittyClient()
+
+    def fake_request(method, path, params=None, body=None):
+        raise CloudKittyApiError("method not allowed", status_code=405, url=f"https://ck.example{path}")
+
+    with patch.object(client, "request", side_effect=fake_request):
+        with pytest.raises(CloudKittyError, match="accepted GET or POST"):
+            client.validate_currency("DKK")
