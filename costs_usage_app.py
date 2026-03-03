@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from currency import get_default_currency
+from startup_validation import describe_env, print_env_resolution
 
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
@@ -174,12 +175,37 @@ def run() -> None:
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
+
     global DEBUG_MODE
     DEBUG_MODE = args.debug
+
+    for var_name, default in [
+        ("OS_AUTH_URL", None),
+        ("OS_USERNAME", None),
+        ("OS_PASSWORD", None),
+        ("OS_USER_DOMAIN_NAME", "Default"),
+        ("OS_PROJECT_DOMAIN_NAME", "Default"),
+        ("OS_INTERFACE", "public"),
+        ("CLOUDKITTY_CURRENCY", "DKK"),
+    ]:
+        value, using_default = describe_env(var_name, default)
+        display = "***" if var_name == "OS_PASSWORD" else value
+        print_env_resolution(var_name, display, using_default)
+
+    project_id = os.environ.get("OS_PROJECT_ID", "").strip()
+    project_name = os.environ.get("OS_PROJECT_NAME", "").strip()
+    if not project_id and not project_name:
+        raise RuntimeError("Set OS_PROJECT_ID or OS_PROJECT_NAME")
+    if project_id:
+        print("[startup] OS_PROJECT_ID is set (environment)")
+    if project_name:
+        print("[startup] OS_PROJECT_NAME is set (environment)")
+
     try:
         CloudKittyClient(debug=DEBUG_MODE).validate_currency(get_default_currency())
     except (OpenStackAuthError, CloudKittyError) as exc:
         raise RuntimeError(f"CloudKitty currency validation failed: {exc}") from exc
+
     server = ThreadingHTTPServer(("0.0.0.0", args.port), CostsUsageHandler)
     server.serve_forever()
 

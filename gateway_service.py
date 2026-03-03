@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error, request
 from urllib.parse import urlparse
 
+from startup_validation import describe_env, print_env_resolution, validate_http_endpoint
+
 
 COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL", "http://costs_usage:8080")
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080")
@@ -91,6 +93,16 @@ def run() -> None:
     parser = argparse.ArgumentParser(description="Yggdrasil FinOps API gateway")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8082")), help="Port to bind the HTTP server to")
     args = parser.parse_args()
+
+    for var_name, default, health_path in [
+        ("COSTS_SERVICE_URL", "http://costs_usage:8080", "/healthz"),
+        ("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080", "/healthz"),
+        ("CHECKOUT_SERVICE_URL", "http://checkout:8080", "/healthz"),
+        ("PAYMENTS_SERVICE_URL", "http://payments:8080", "/healthz"),
+    ]:
+        value, using_default = describe_env(var_name, default)
+        print_env_resolution(var_name, value, using_default)
+        validate_http_endpoint(var_name, value, health_path=health_path)
 
     server = ThreadingHTTPServer(("0.0.0.0", args.port), GatewayHandler)
     print(f"Gateway listening on http://0.0.0.0:{args.port}")

@@ -13,6 +13,7 @@ from billing_service import BillingError, BillingService, InMemoryBillingReposit
 from brevo_client import BrevoClient, BrevoError
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from currency import get_default_currency
+from startup_validation import describe_env, print_env_resolution
 from document_service import DocumentError, DocumentService
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
 from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
@@ -623,6 +624,29 @@ def run() -> None:
 
     global DEBUG_MODE
     DEBUG_MODE = args.debug
+
+    for var_name, default in [
+        ("OS_AUTH_URL", None),
+        ("OS_USERNAME", None),
+        ("OS_PASSWORD", None),
+        ("OS_USER_DOMAIN_NAME", "Default"),
+        ("OS_PROJECT_DOMAIN_NAME", "Default"),
+        ("OS_INTERFACE", "public"),
+        ("CLOUDKITTY_CURRENCY", "DKK"),
+    ]:
+        value, using_default = describe_env(var_name, default)
+        display = "***" if var_name == "OS_PASSWORD" else value
+        print_env_resolution(var_name, display, using_default)
+
+    project_id = os.environ.get("OS_PROJECT_ID", "").strip()
+    project_name = os.environ.get("OS_PROJECT_NAME", "").strip()
+    if not project_id and not project_name:
+        raise RuntimeError("Set OS_PROJECT_ID or OS_PROJECT_NAME")
+    if project_id:
+        print("[startup] OS_PROJECT_ID is set (environment)")
+    if project_name:
+        print("[startup] OS_PROJECT_NAME is set (environment)")
+
     try:
         CloudKittyClient(debug=DEBUG_MODE).validate_currency(get_default_currency())
     except (OpenStackAuthError, CloudKittyError) as exc:

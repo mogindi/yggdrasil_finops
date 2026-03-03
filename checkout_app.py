@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
 from currency import get_default_currency
+from startup_validation import StartupValidationError, describe_env, ensure_http_url, print_env_resolution, validate_http_endpoint
 
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080")
 DEBUG_MODE = False
@@ -92,6 +93,20 @@ def run() -> None:
     DEBUG_MODE = args.debug
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    doc_url, doc_url_defaulted = describe_env("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080")
+    print_env_resolution("DOCUMENT_GENERATOR_SERVICE_URL", doc_url, doc_url_defaulted)
+    validate_http_endpoint("DOCUMENT_GENERATOR_SERVICE_URL", doc_url, health_path="/healthz")
+
+    revolut_url, revolut_url_defaulted = describe_env("REVOLUT_BUSINESS_API_URL", "https://sandbox-merchant.revolut.com")
+    print_env_resolution("REVOLUT_BUSINESS_API_URL", revolut_url, revolut_url_defaulted)
+    ensure_http_url("REVOLUT_BUSINESS_API_URL", revolut_url)
+
+    revolut_key, revolut_key_defaulted = describe_env("REVOLUT_API_KEY", None)
+    if revolut_key_defaulted:
+        raise StartupValidationError("REVOLUT_API_KEY is required")
+    print("[startup] REVOLUT_API_KEY is set (environment)")
+
     ThreadingHTTPServer(("0.0.0.0", args.port), CheckoutHandler).serve_forever()
 
 
