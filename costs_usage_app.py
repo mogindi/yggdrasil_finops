@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import logging
 import datetime as dt
 import html
 import json
@@ -178,6 +179,8 @@ def run() -> None:
 
     global DEBUG_MODE
     DEBUG_MODE = args.debug
+    if DEBUG_MODE:
+        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     for var_name, default in [
         ("OS_AUTH_URL", None),

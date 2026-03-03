@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import logging
 import json
 import os
 from http import HTTPStatus
@@ -92,7 +93,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
 def run() -> None:
     parser = argparse.ArgumentParser(description="Yggdrasil FinOps API gateway")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8082")), help="Port to bind the HTTP server to")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     for var_name, default, health_path in [
         ("COSTS_SERVICE_URL", "http://costs_usage:8080", "/healthz"),

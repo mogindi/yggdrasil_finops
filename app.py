@@ -4,6 +4,7 @@ import html
 import json
 import os
 import argparse
+import logging
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -624,6 +625,8 @@ def run() -> None:
 
     global DEBUG_MODE
     DEBUG_MODE = args.debug
+    if DEBUG_MODE:
+        logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     for var_name, default in [
         ("OS_AUTH_URL", None),
