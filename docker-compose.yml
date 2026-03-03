@@ -4,13 +4,12 @@ services:
   gateway:
     build: .
     command: ["python", "gateway_service.py", "--port", "8082"]
+    network_mode: host
     environment:
-      COSTS_SERVICE_URL: http://costs_usage:8080
-      DOCUMENT_GENERATOR_SERVICE_URL: http://document_generator:8080
-      CHECKOUT_SERVICE_URL: http://checkout:8080
-      PAYMENTS_SERVICE_URL: http://payments:8080
-    ports:
-      - "8082:8082"
+      COSTS_SERVICE_URL: http://localhost:8083
+      DOCUMENT_GENERATOR_SERVICE_URL: http://localhost:8084
+      CHECKOUT_SERVICE_URL: http://localhost:8085
+      PAYMENTS_SERVICE_URL: http://localhost:8086
     depends_on:
       - costs_usage
       - document_generator
@@ -19,7 +18,8 @@ services:
 
   costs_usage:
     build: .
-    command: ["python", "costs_usage_app.py", "--port", "8080"]
+    command: ["python", "costs_usage_app.py", "--port", "8083"]
+    network_mode: host
     environment:
       OS_AUTH_URL: ${OS_AUTH_URL:-}
       OS_USERNAME: ${OS_USERNAME:-}
@@ -36,7 +36,8 @@ services:
 
   document_generator:
     build: .
-    command: ["python", "document_generator_app.py", "--port", "8080"]
+    command: ["python", "document_generator_app.py", "--port", "8084"]
+    network_mode: host
     environment:
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
@@ -45,15 +46,17 @@ services:
 
   checkout:
     build: .
-    command: ["python", "checkout_app.py", "--port", "8080"]
+    command: ["python", "checkout_app.py", "--port", "8085"]
+    network_mode: host
     environment:
       REVOLUT_API_KEY: ${REVOLUT_API_KEY:-}
-      DOCUMENT_GENERATOR_SERVICE_URL: http://document_generator:8080
+      DOCUMENT_GENERATOR_SERVICE_URL: http://localhost:8084
       REVOLUT_BUSINESS_API_URL: ${REVOLUT_BUSINESS_API_URL:-https://sandbox-merchant.revolut.com}
       REVOLUT_ORDERS_PATH: ${REVOLUT_ORDERS_PATH:-/api/orders}
 
   payments:
     build: .
-    command: ["python", "payments_app.py", "--port", "8080"]
+    command: ["python", "payments_app.py", "--port", "8086"]
+    network_mode: host
     environment:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
