@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
 from currency import get_default_currency
+from startup_validation import describe_env, print_env_resolution, validate_http_endpoint
 
 
 DEBUG_MODE = False
@@ -119,6 +120,11 @@ def run() -> None:
     DEBUG_MODE = args.debug
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    opensearch_url, using_default = describe_env("OPENSEARCH_URL", "http://localhost:9200")
+    print_env_resolution("OPENSEARCH_URL", opensearch_url, using_default)
+    validate_http_endpoint("OPENSEARCH_URL", opensearch_url, health_path="/")
+
     ThreadingHTTPServer(("0.0.0.0", args.port), PaymentsHandler).serve_forever()
 
 

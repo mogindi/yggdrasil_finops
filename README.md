@@ -46,28 +46,72 @@ No external Python packages are required.
 
 ## Required environment variables
 
-The service uses the standard OpenStack variables (from `openrc`):
+The services print a startup summary showing each relevant variable, whether it came from the environment or a default, and then run early dependency checks.
 
-- `OS_AUTH_URL` (for Keystone v3, e.g. `https://keystone:5000/v3`)
-- `OS_USERNAME`
-- `OS_PASSWORD`
-- `OS_PROJECT_NAME` **or** `OS_PROJECT_ID`
-- Optional:
+### OpenStack / CloudKitty (required for `app.py` and `costs_usage_app.py`)
+
+- **Required (must be set):**
+  - `OS_AUTH_URL`
+  - `OS_USERNAME`
+  - `OS_PASSWORD`
+  - One of: `OS_PROJECT_ID` or `OS_PROJECT_NAME`
+- **Optional with defaults (do not need to be set unless you want override behavior):**
   - `OS_USER_DOMAIN_NAME` (default: `Default`)
   - `OS_PROJECT_DOMAIN_NAME` (default: `Default`)
-  - `OS_REGION_NAME`
   - `OS_INTERFACE` (default: `public`)
-  - `CLOUDKITTY_ENDPOINT` (override endpoint discovery)
-  - `CLOUDKITTY_CURRENCY` (default response currency: `DKK`)
-  - `OPENSEARCH_URL` (OpenSearch base URL, default: `http://localhost:9200`)
-  - `OS_VERIFY=false` to disable TLS verification (not recommended)
-  - `REVOLUT_API_KEY` (required for Revolut payment order creation)
+  - `OS_REGION_NAME` (no default; used only for endpoint matching)
+  - `CLOUDKITTY_ENDPOINT` (no default; auto-discovered from Keystone catalog if not set)
+  - `CLOUDKITTY_CURRENCY` (default: `DKK`)
+  - `OS_VERIFY` (default: `true`)
+
+**Startup validation performed:**
+- Keystone/CloudKitty auth is attempted immediately.
+- CloudKitty `/v1/info` is called and validated against `CLOUDKITTY_CURRENCY`.
+
+### Payments service (`payments_app.py`)
+
+- **Optional with defaults:**
+  - `OPENSEARCH_URL` (default: `http://localhost:9200`)
+  - `OS_VERIFY` (default: `true`)
+
+**Startup validation performed:**
+- `OPENSEARCH_URL` is validated as a proper URL.
+- A reachability check is performed against OpenSearch (`GET /`).
+
+### Checkout service (`checkout_app.py`)
+
+- **Required (must be set):**
+  - `REVOLUT_API_KEY`
+- **Optional with defaults:**
+  - `DOCUMENT_GENERATOR_SERVICE_URL` (default: `http://document_generator:8080`)
   - `REVOLUT_BUSINESS_API_URL` (default: `https://sandbox-merchant.revolut.com`)
   - `REVOLUT_ORDERS_PATH` (default: `/api/orders`)
-  - `BREVO_API_KEY` (required when using `send_email=true` or CLI `--send-email`)
-  - `BREVO_API_URL` (default: `https://api.brevo.com/v3/smtp/email`)
-  - `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` (email sender identity)
+  - `OS_VERIFY` (default: `true`)
 
+**Startup validation performed:**
+- `DOCUMENT_GENERATOR_SERVICE_URL` format + `/healthz` reachability check.
+- `REVOLUT_BUSINESS_API_URL` format check.
+- `REVOLUT_API_KEY` presence check.
+
+### Gateway (`gateway_service.py`)
+
+- **Optional with defaults:**
+  - `COSTS_SERVICE_URL` (default: `http://costs_usage:8080`)
+  - `DOCUMENT_GENERATOR_SERVICE_URL` (default: `http://document_generator:8080`)
+  - `CHECKOUT_SERVICE_URL` (default: `http://checkout:8080`)
+  - `PAYMENTS_SERVICE_URL` (default: `http://payments:8080`)
+
+**Startup validation performed:**
+- Each upstream service URL is validated and checked for `/healthz` reachability before gateway startup.
+
+### Document generator (`document_generator_app.py`)
+
+- **Optional with defaults:**
+  - `BREVO_API_URL` (default: `https://api.brevo.com/v3/smtp/email`)
+  - `BREVO_SENDER_EMAIL` (default: `noreply@example.com`)
+  - `BREVO_SENDER_NAME` (default: `Yggdrasil FinOps`)
+- **Conditionally required:**
+  - `BREVO_API_KEY` is only required when calling invoice/receipt file endpoints with `send_email=true` (or CLI `--send-email`).
 
 ## Microservice deployment (Docker Compose)
 
