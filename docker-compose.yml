@@ -2,7 +2,9 @@ version: "3.9"
 
 services:
   gateway:
-    build: .
+    build:
+      context: .
+      network: host
     command: ["python", "gateway_service.py", "--port", "8082"]
     network_mode: host
     environment:
@@ -17,7 +19,9 @@ services:
       - payments
 
   costs_usage:
-    build: .
+    build:
+      context: .
+      network: host
     command: ["python", "costs_usage_app.py", "--port", "8083"]
     network_mode: host
     environment:
@@ -35,7 +39,9 @@ services:
       OS_VERIFY: ${OS_VERIFY:-true}
 
   document_generator:
-    build: .
+    build:
+      context: .
+      network: host
     command: ["python", "document_generator_app.py", "--port", "8084"]
     network_mode: host
     environment:
@@ -45,7 +51,9 @@ services:
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-}
 
   checkout:
-    build: .
+    build:
+      context: .
+      network: host
     command: ["python", "checkout_app.py", "--port", "8085"]
     network_mode: host
     environment:
@@ -55,7 +63,9 @@ services:
       REVOLUT_ORDERS_PATH: ${REVOLUT_ORDERS_PATH:-/api/orders}
 
   payments:
-    build: .
+    build:
+      context: .
+      network: host
     command: ["python", "payments_app.py", "--port", "8086"]
     network_mode: host
     environment:

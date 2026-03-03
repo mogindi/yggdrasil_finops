@@ -131,7 +131,12 @@ Start everything:
 docker compose up --build
 ```
 
-This Compose file is configured for **host networking** (`network_mode: host`) instead of a bridge network. Services communicate via `localhost` on dedicated ports:
+This Compose file is configured for **host networking** instead of a bridge network:
+
+- Runtime uses `network_mode: host` for every service.
+- Build uses `build.network: host` for every service to avoid bridge-network dependency during `pip install` image build steps.
+
+Services communicate via `localhost` on dedicated ports:
 
 - `gateway`: `8082`
 - `costs_usage`: `8083`
