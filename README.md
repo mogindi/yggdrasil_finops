@@ -131,6 +131,19 @@ Start everything:
 docker compose up --build
 ```
 
+This Compose file is configured for **host networking** instead of a bridge network:
+
+- Runtime uses `network_mode: host` for every service.
+- Build uses `build.network: host` for every service to avoid bridge-network dependency during `pip install` image build steps.
+
+Services communicate via `localhost` on dedicated ports:
+
+- `gateway`: `8082`
+- `costs_usage`: `8083`
+- `document_generator`: `8084`
+- `checkout`: `8085`
+- `payments`: `8086`
+
 Then use the same API/CLI commands as before (pointing to gateway `:8082`).
 
 Each backend now runs a dedicated application (`costs_usage_app.py`, `document_generator_app.py`, `checkout_app.py`, `payments_app.py`) with isolated HTTP handlers.
