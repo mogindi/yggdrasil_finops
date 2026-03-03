@@ -291,13 +291,32 @@ class CloudKittyClient:
         return None
 
     def get_cloudkitty_currency(self) -> str | None:
-        info = self.request("GET", "/v1/info")
-        return self._find_currency_value(info)
+        info_endpoints = ["/v1/info", "/v1/info/", "/info", "/"]
+        last_error: CloudKittyApiError | None = None
+
+        for endpoint in info_endpoints:
+            try:
+                info = self.request("GET", endpoint)
+                currency = self._find_currency_value(info)
+                if currency:
+                    return currency
+            except CloudKittyApiError as exc:
+                last_error = exc
+                if exc.status_code in {404, 405}:
+                    self._debug(f"Currency discovery endpoint unsupported endpoint={endpoint} status={exc.status_code}; trying next")
+                    continue
+                raise
+
+        if last_error and last_error.status_code in {404, 405}:
+            raise CloudKittyError(
+                "Could not determine CloudKitty configured currency: no compatible info endpoint accepted GET"
+            ) from last_error
+        return None
 
     def validate_currency(self, expected_currency: str) -> None:
         configured = self.get_cloudkitty_currency()
         if not configured:
-            raise CloudKittyError("Could not determine CloudKitty configured currency from /v1/info")
+            raise CloudKittyError("Could not determine CloudKitty configured currency from CloudKitty info endpoints")
         expected = expected_currency.upper()
         if configured != expected:
             raise CloudKittyError(

@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from cloudkitty_client import CloudKittyClient, CloudKittyError
+from cloudkitty_client import CloudKittyApiError, CloudKittyClient, CloudKittyError
 from currency import get_default_currency
 
 
@@ -27,3 +27,23 @@ def test_cloudkitty_currency_validation_fails_on_mismatch(monkeypatch):
     with patch.object(client, "get_cloudkitty_currency", return_value="EUR"):
         with pytest.raises(CloudKittyError):
             client.validate_currency("DKK")
+
+
+def test_cloudkitty_currency_validation_falls_back_from_405_info_endpoint(monkeypatch):
+    monkeypatch.setenv("OS_AUTH_URL", "https://keystone.example/v3")
+    monkeypatch.setenv("OS_USERNAME", "u")
+    monkeypatch.setenv("OS_PASSWORD", "p")
+    monkeypatch.setenv("OS_PROJECT_ID", "proj")
+    monkeypatch.setenv("CLOUDKITTY_ENDPOINT", "https://ck.example")
+
+    client = CloudKittyClient()
+
+    def fake_request(method, path, params=None, body=None):
+        if path == "/v1/info":
+            raise CloudKittyApiError("method not allowed", status_code=405, url=f"https://ck.example{path}")
+        if path == "/v1/info/":
+            return {"info": {"currency": "dkk"}}
+        return {}
+
+    with patch.object(client, "request", side_effect=fake_request):
+        client.validate_currency("DKK")
