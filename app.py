@@ -650,11 +650,6 @@ def run() -> None:
     if project_name:
         print("[startup] OS_PROJECT_NAME is set (environment)")
 
-    try:
-        CloudKittyClient(debug=DEBUG_MODE).validate_currency(get_default_currency())
-    except (OpenStackAuthError, CloudKittyError) as exc:
-        raise RuntimeError(f"CloudKitty currency validation failed: {exc}") from exc
-
     port = args.port
     server = ThreadingHTTPServer(("0.0.0.0", port), CostHandler)
     mode = "debug" if DEBUG_MODE else "normal"
