@@ -121,9 +121,12 @@ def run() -> None:
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    opensearch_url, using_default = describe_env("OPENSEARCH_URL", "http://localhost:9200")
+    opensearch_url, using_default = describe_env("OPENSEARCH_URL")
     print_env_resolution("OPENSEARCH_URL", opensearch_url, using_default)
     validate_http_endpoint("OPENSEARCH_URL", opensearch_url, health_path="/")
+
+    os_verify, os_verify_defaulted = describe_env("OS_VERIFY")
+    print_env_resolution("OS_VERIFY", os_verify, os_verify_defaulted)
 
     ThreadingHTTPServer(("0.0.0.0", args.port), PaymentsHandler).serve_forever()
 

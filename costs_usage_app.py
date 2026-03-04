@@ -186,10 +186,10 @@ def run() -> None:
         ("OS_AUTH_URL", None),
         ("OS_USERNAME", None),
         ("OS_PASSWORD", None),
-        ("OS_USER_DOMAIN_NAME", "Default"),
-        ("OS_PROJECT_DOMAIN_NAME", "Default"),
-        ("OS_INTERFACE", "public"),
-        ("CLOUDKITTY_CURRENCY", "DKK"),
+        ("OS_USER_DOMAIN_NAME", None),
+        ("OS_PROJECT_DOMAIN_NAME", None),
+        ("OS_INTERFACE", None),
+        ("CLOUDKITTY_CURRENCY", None),
     ]:
         value, using_default = describe_env(var_name, default)
         display = "***" if var_name == "OS_PASSWORD" else value

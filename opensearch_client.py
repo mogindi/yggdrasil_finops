@@ -22,8 +22,8 @@ class OpenSearchApiError(OpenSearchError):
 
 class OpenSearchClient:
     def __init__(self, debug: bool = False) -> None:
-        self.endpoint = os.environ.get("OPENSEARCH_URL", "http://localhost:9200").rstrip("/")
-        self.verify = os.environ.get("OS_VERIFY", "true").lower() not in {"0", "false", "no"}
+        self.endpoint = os.environ["OPENSEARCH_URL"].rstrip("/")
+        self.verify = os.environ["OS_VERIFY"].lower() not in {"0", "false", "no"}
         self.debug = debug
         self._logger = logging.getLogger(self.__class__.__name__)
         if self.debug:

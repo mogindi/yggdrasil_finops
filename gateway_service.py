@@ -11,10 +11,10 @@ from urllib.parse import urlparse
 from startup_validation import describe_env, print_env_resolution, validate_http_endpoint
 
 
-COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL", "http://costs_usage:8080")
-DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080")
-CHECKOUT_SERVICE_URL = os.environ.get("CHECKOUT_SERVICE_URL", "http://checkout:8080")
-PAYMENTS_SERVICE_URL = os.environ.get("PAYMENTS_SERVICE_URL", "http://payments:8080")
+COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL")
+DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL")
+CHECKOUT_SERVICE_URL = os.environ.get("CHECKOUT_SERVICE_URL")
+PAYMENTS_SERVICE_URL = os.environ.get("PAYMENTS_SERVICE_URL")
 
 
 class GatewayHandler(BaseHTTPRequestHandler):
@@ -99,15 +99,21 @@ def run() -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    for var_name, default, health_path in [
-        ("COSTS_SERVICE_URL", "http://costs_usage:8080", "/healthz"),
-        ("DOCUMENT_GENERATOR_SERVICE_URL", "http://document_generator:8080", "/healthz"),
-        ("CHECKOUT_SERVICE_URL", "http://checkout:8080", "/healthz"),
-        ("PAYMENTS_SERVICE_URL", "http://payments:8080", "/healthz"),
+    for var_name, health_path in [
+        ("COSTS_SERVICE_URL", "/healthz"),
+        ("DOCUMENT_GENERATOR_SERVICE_URL", "/healthz"),
+        ("CHECKOUT_SERVICE_URL", "/healthz"),
+        ("PAYMENTS_SERVICE_URL", "/healthz"),
     ]:
-        value, using_default = describe_env(var_name, default)
+        value, using_default = describe_env(var_name)
         print_env_resolution(var_name, value, using_default)
         validate_http_endpoint(var_name, value, health_path=health_path)
+
+    global COSTS_SERVICE_URL, DOCUMENT_GENERATOR_SERVICE_URL, CHECKOUT_SERVICE_URL, PAYMENTS_SERVICE_URL
+    COSTS_SERVICE_URL = os.environ["COSTS_SERVICE_URL"]
+    DOCUMENT_GENERATOR_SERVICE_URL = os.environ["DOCUMENT_GENERATOR_SERVICE_URL"]
+    CHECKOUT_SERVICE_URL = os.environ["CHECKOUT_SERVICE_URL"]
+    PAYMENTS_SERVICE_URL = os.environ["PAYMENTS_SERVICE_URL"]
 
     server = ThreadingHTTPServer(("0.0.0.0", args.port), GatewayHandler)
     print(f"Gateway listening on http://0.0.0.0:{args.port}")
