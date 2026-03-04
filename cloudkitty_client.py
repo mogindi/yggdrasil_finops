@@ -31,19 +31,19 @@ class ProjectNotFoundError(CloudKittyError):
 
 class CloudKittyClient:
     def __init__(self, debug: bool = False) -> None:
-        self.auth_url = os.environ.get("OS_AUTH_URL", "").rstrip("/")
+        self.auth_url = os.environ["OS_AUTH_URL"].rstrip("/")
         if not self.auth_url:
             raise OpenStackAuthError("OS_AUTH_URL is required")
         self._token_url = self._build_keystone_tokens_url(self.auth_url)
         self.username = os.environ.get("OS_USERNAME")
         self.password = os.environ.get("OS_PASSWORD")
-        self.user_domain = os.environ.get("OS_USER_DOMAIN_NAME", "Default")
-        self.project_domain = os.environ.get("OS_PROJECT_DOMAIN_NAME", "Default")
+        self.user_domain = os.environ["OS_USER_DOMAIN_NAME"]
+        self.project_domain = os.environ["OS_PROJECT_DOMAIN_NAME"]
         self.project_name = os.environ.get("OS_PROJECT_NAME")
         self.project_id = os.environ.get("OS_PROJECT_ID")
         self.region_name = os.environ.get("OS_REGION_NAME")
-        self.interface = os.environ.get("OS_INTERFACE", "public")
-        self.verify = os.environ.get("OS_VERIFY", "true").lower() not in {"0", "false", "no"}
+        self.interface = os.environ["OS_INTERFACE"]
+        self.verify = os.environ["OS_VERIFY"].lower() not in {"0", "false", "no"}
         self.debug = debug
 
         self._logger = logging.getLogger(self.__class__.__name__)

@@ -47,8 +47,8 @@ services:
     environment:
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
-      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-}
-      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@example.com}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Yggdrasil FinOps}
 
   checkout:
     build:
@@ -61,6 +61,7 @@ services:
       DOCUMENT_GENERATOR_SERVICE_URL: http://localhost:8084
       REVOLUT_BUSINESS_API_URL: ${REVOLUT_BUSINESS_API_URL:-https://sandbox-merchant.revolut.com}
       REVOLUT_ORDERS_PATH: ${REVOLUT_ORDERS_PATH:-/api/orders}
+      OS_VERIFY: ${OS_VERIFY:-true}
 
   payments:
     build:
@@ -70,3 +71,4 @@ services:
     network_mode: host
     environment:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
+      OS_VERIFY: ${OS_VERIFY:-true}

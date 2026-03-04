@@ -21,10 +21,10 @@ class RevolutApiError(RevolutError):
 
 class RevolutBusinessClient:
     def __init__(self, debug: bool = False) -> None:
-        self.endpoint = os.environ.get("REVOLUT_BUSINESS_API_URL", "https://sandbox-merchant.revolut.com").rstrip("/")
-        self.orders_path = os.environ.get("REVOLUT_ORDERS_PATH", "/api/orders")
+        self.endpoint = os.environ["REVOLUT_BUSINESS_API_URL"].rstrip("/")
+        self.orders_path = os.environ["REVOLUT_ORDERS_PATH"]
         self.api_key = os.environ.get("REVOLUT_API_KEY", "").strip()
-        self.verify = os.environ.get("OS_VERIFY", "true").lower() not in {"0", "false", "no"}
+        self.verify = os.environ["OS_VERIFY"].lower() not in {"0", "false", "no"}
         self._ssl_ctx = ssl.create_default_context() if self.verify else ssl._create_unverified_context()
         self.debug = debug
         self._logger = logging.getLogger(self.__class__.__name__)

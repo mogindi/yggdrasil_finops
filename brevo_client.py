@@ -11,10 +11,10 @@ class BrevoError(Exception):
 
 class BrevoClient:
     def __init__(self, debug: bool = False):
-        self.api_key = os.environ.get("BREVO_API_KEY", "")
-        self.endpoint = os.environ.get("BREVO_API_URL", "https://api.brevo.com/v3/smtp/email")
-        self.sender_email = os.environ.get("BREVO_SENDER_EMAIL", "noreply@example.com")
-        self.sender_name = os.environ.get("BREVO_SENDER_NAME", "Yggdrasil FinOps")
+        self.api_key = os.environ["BREVO_API_KEY"]
+        self.endpoint = os.environ["BREVO_API_URL"]
+        self.sender_email = os.environ["BREVO_SENDER_EMAIL"]
+        self.sender_name = os.environ["BREVO_SENDER_NAME"]
         self.debug = debug
         self._logger = logging.getLogger(self.__class__.__name__)
 
