@@ -7,7 +7,6 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 - `GET /api/projects/<project_id>/costs`
   - Returns **aggregate project cost for the requested/default time range**.
   - Optionally returns a **time-series** for graphing.
-  - On startup, the cost services validate the configured currency (`CLOUDKITTY_CURRENCY`, default `DKK`) against CloudKitty `/v1/info`.
 - `GET /api/projects/<project_id>/costs/last-month`
   - Returns the same payload format as `/costs`.
   - Uses the previous calendar month window in UTC (`YYYY-MM-01T00:00:00Z` to month end `23:59:59Z`).
@@ -66,7 +65,6 @@ The services print a startup summary showing each relevant variable, whether it 
 
 **Startup validation performed:**
 - Keystone/CloudKitty auth is attempted immediately.
-- CloudKitty `/v1/info` is called and validated against `CLOUDKITTY_CURRENCY`.
 
 ### Payments service (`payments_app.py`)
 
