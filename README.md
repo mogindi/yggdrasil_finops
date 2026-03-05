@@ -251,6 +251,8 @@ python yggdrasil_finops payment create \
   --paid-at 2026-01-10T12:00:00Z
 python yggdrasil_finops payment list --project-id proj_123
 python yggdrasil_finops payment show --project-id proj_123 --event-id evt_001
+python yggdrasil_finops payment set-balance --project-id proj_123 --costs-total 120.00 --payments-total 150.00
+python yggdrasil_finops payment balance --project-id proj_123
 
 # invoice create/list/show
 python yggdrasil_finops invoice create \

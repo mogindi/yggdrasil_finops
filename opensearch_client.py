@@ -143,6 +143,9 @@ class OpenSearchClient:
                 "properties": {
                     "project_id": {"type": "keyword"},
                     "currency": {"type": "keyword"},
+                    "costs_total": {"type": "scaled_float", "scaling_factor": 100},
+                    "payments_total": {"type": "scaled_float", "scaling_factor": 100},
+                    "balance": {"type": "scaled_float", "scaling_factor": 100},
                     "paid_total": {"type": "scaled_float", "scaling_factor": 100},
                     "refunded_total": {"type": "scaled_float", "scaling_factor": 100},
                     "net_paid": {"type": "scaled_float", "scaling_factor": 100},
@@ -213,14 +216,19 @@ class OpenSearchClient:
         }
         return self._http_json("GET", "/payments-*/_search", body)
 
-    def upsert_balance(self, project_id: str, currency: str, paid_total: float, refunded_total: float, net_paid: float) -> dict[str, Any]:
+    def upsert_balance(self, project_id: str, currency: str, costs_total: float, payments_total: float) -> dict[str, Any]:
+        balance = float(costs_total) - float(payments_total)
         body = {
             "doc": {
                 "project_id": project_id,
                 "currency": currency,
-                "paid_total": paid_total,
-                "refunded_total": refunded_total,
-                "net_paid": net_paid,
+                "costs_total": float(costs_total),
+                "payments_total": float(payments_total),
+                "balance": balance,
+                # Backward-compatible aliases for older dashboards and clients.
+                "paid_total": float(payments_total),
+                "refunded_total": float(costs_total),
+                "net_paid": -balance,
                 "updated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
             },
             "doc_as_upsert": True,

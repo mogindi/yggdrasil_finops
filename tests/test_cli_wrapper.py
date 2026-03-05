@@ -158,6 +158,43 @@ class CliWrapperTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith("/api/projects/proj_123/invoices/inv_1"))
 
 
+    def test_payment_balance_get_calls_expected_endpoint(self):
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"found": True})) as mocked:
+            rc = yggdrasil_finops.main([
+                "payment",
+                "balance",
+                "--project-id",
+                "proj_123",
+            ])
+        self.assertEqual(rc, 0)
+        req = mocked.call_args.args[0]
+        self.assertEqual(req.method, "GET")
+        self.assertTrue(req.full_url.endswith("/api/projects/proj_123/payments/balance"))
+
+    def test_payment_set_balance_puts_costs_and_payments_totals(self):
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"result": "updated"})) as mocked:
+            rc = yggdrasil_finops.main([
+                "payment",
+                "set-balance",
+                "--project-id",
+                "proj_123",
+                "--currency",
+                "USD",
+                "--costs-total",
+                "120.0",
+                "--payments-total",
+                "150.0",
+            ])
+        self.assertEqual(rc, 0)
+        req = mocked.call_args.args[0]
+        self.assertEqual(req.method, "PUT")
+        self.assertTrue(req.full_url.endswith("/api/projects/proj_123/payments/balance"))
+        payload = json.loads(req.data.decode("utf-8"))
+        self.assertEqual(payload["currency"], "USD")
+        self.assertEqual(payload["costs_total"], 120.0)
+        self.assertEqual(payload["payments_total"], 150.0)
+
+
     def test_invoice_file_download_uses_file_endpoint(self):
         with patch("urllib.request.urlopen", return_value=FakeResponse(raw_body=b"%PDF-1.4 mock", headers={"Content-Type": "application/pdf"})) as mocked:
             with patch("builtins.open", unittest.mock.mock_open()) as open_mock:

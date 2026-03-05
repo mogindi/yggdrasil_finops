@@ -117,6 +117,19 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertTrue(payload["acknowledged"])
         self.assertTrue(payload["already_exists"])
 
+
+    def test_upsert_balance_computes_cost_minus_payments(self):
+        client = OpenSearchClient()
+        with patch.object(client, "_http_json", return_value={"result": "updated"}) as http_mock:
+            client.upsert_balance("proj-123", "USD", costs_total=120.0, payments_total=150.0)
+
+        self.assertEqual(http_mock.call_args.args[0], "POST")
+        self.assertEqual(http_mock.call_args.args[1], "/project-balances/_update/proj-123")
+        payload = http_mock.call_args.args[2]
+        self.assertEqual(payload["doc"]["costs_total"], 120.0)
+        self.assertEqual(payload["doc"]["payments_total"], 150.0)
+        self.assertEqual(payload["doc"]["balance"], -30.0)
+
     def test_put_payment_event_injects_project_id(self):
         FakeOpenSearchClient.upsert_calls = []
         with patch("app.OpenSearchClient", FakeOpenSearchClient), patch("app.CloudKittyClient", FakeCloudKittyClient):
