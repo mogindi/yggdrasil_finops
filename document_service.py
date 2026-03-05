@@ -52,6 +52,7 @@ def _png_to_pdf_image(data: bytes) -> tuple[int, int, bytes, bytes]:
     color_type = 0
     interlace = 0
     idat_parts: list[bytes] = []
+    palette: bytes | None = None
 
     while idx + 8 <= len(data):
         chunk_len = struct.unpack(">I", data[idx : idx + 4])[0]
@@ -69,6 +70,8 @@ def _png_to_pdf_image(data: bytes) -> tuple[int, int, bytes, bytes]:
             width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", chunk_data)
         elif chunk_type == b"IDAT":
             idat_parts.append(chunk_data)
+        elif chunk_type == b"PLTE":
+            palette = chunk_data
         elif chunk_type == b"IEND":
             break
 
@@ -82,22 +85,109 @@ def _png_to_pdf_image(data: bytes) -> tuple[int, int, bytes, bytes]:
     if color_type == 2:
         channels = 3
         color_space = b"/DeviceRGB"
+        stream = b"".join(idat_parts)
+        decode_parms = (
+            f" /DecodeParms << /Predictor 15 /Colors {channels} /BitsPerComponent 8 /Columns {width} >>".encode("latin-1")
+        )
     elif color_type == 0:
         channels = 1
         color_space = b"/DeviceGray"
+        stream = b"".join(idat_parts)
+        decode_parms = (
+            f" /DecodeParms << /Predictor 15 /Colors {channels} /BitsPerComponent 8 /Columns {width} >>".encode("latin-1")
+        )
+    elif color_type in (3, 4, 6):
+        stream, channels, color_space = _normalize_png_image_data(width, height, bit_depth, color_type, b"".join(idat_parts), palette)
+        decode_parms = b""
     else:
         raise DocumentError("PNG logos must be RGB or grayscale (no alpha/palette)")
 
     return (
         width,
         height,
-        b"".join(idat_parts),
+        stream,
         b"/ColorSpace "
         + color_space
-        + f" /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors {channels} /BitsPerComponent 8 /Columns {width} >>".encode(
-            "latin-1"
-        ),
+        + b" /BitsPerComponent 8 /Filter /FlateDecode"
+        + decode_parms,
     )
+
+
+def _normalize_png_image_data(
+    width: int, height: int, bit_depth: int, color_type: int, compressed_scanlines: bytes, palette: bytes | None
+) -> tuple[bytes, int, bytes]:
+    channels_by_type = {3: 1, 4: 2, 6: 4}
+    channels = channels_by_type[color_type]
+    if bit_depth != 8:
+        raise DocumentError("PNG logos with alpha or palette must use 8-bit channels")
+
+    row_bytes = width * channels
+    try:
+        filtered = zlib.decompress(compressed_scanlines)
+    except zlib.error as exc:
+        raise DocumentError("Invalid PNG logo") from exc
+    expected_len = height * (1 + row_bytes)
+    if len(filtered) != expected_len:
+        raise DocumentError("Invalid PNG logo")
+
+    def paeth(a: int, b: int, c: int) -> int:
+        p = a + b - c
+        pa = abs(p - a)
+        pb = abs(p - b)
+        pc = abs(p - c)
+        if pa <= pb and pa <= pc:
+            return a
+        if pb <= pc:
+            return b
+        return c
+
+    out_rows = bytearray()
+    prev = b"\x00" * row_bytes
+    for y in range(height):
+        row_start = y * (1 + row_bytes)
+        filter_type = filtered[row_start]
+        current = bytearray(filtered[row_start + 1 : row_start + 1 + row_bytes])
+        for i in range(row_bytes):
+            left = current[i - channels] if i >= channels else 0
+            up = prev[i]
+            up_left = prev[i - channels] if i >= channels else 0
+            if filter_type == 0:
+                pass
+            elif filter_type == 1:
+                current[i] = (current[i] + left) & 0xFF
+            elif filter_type == 2:
+                current[i] = (current[i] + up) & 0xFF
+            elif filter_type == 3:
+                current[i] = (current[i] + ((left + up) // 2)) & 0xFF
+            elif filter_type == 4:
+                current[i] = (current[i] + paeth(left, up, up_left)) & 0xFF
+            else:
+                raise DocumentError("Invalid PNG logo")
+
+        if color_type == 6:  # RGBA -> RGB
+            for px in range(0, len(current), 4):
+                out_rows.extend(current[px : px + 3])
+            out_channels = 3
+            color_space = b"/DeviceRGB"
+        elif color_type == 4:  # Gray+Alpha -> Gray
+            for px in range(0, len(current), 2):
+                out_rows.append(current[px])
+            out_channels = 1
+            color_space = b"/DeviceGray"
+        else:  # Indexed
+            if not palette or len(palette) % 3:
+                raise DocumentError("PNG palette logo is missing a valid PLTE chunk")
+            for index in current:
+                base = index * 3
+                if base + 3 > len(palette):
+                    raise DocumentError("PNG palette index out of range")
+                out_rows.extend(palette[base : base + 3])
+            out_channels = 3
+            color_space = b"/DeviceRGB"
+
+        prev = bytes(current)
+
+    return zlib.compress(bytes(out_rows)), out_channels, color_space
 
 
 class DocumentService:
