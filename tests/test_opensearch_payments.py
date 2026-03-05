@@ -114,7 +114,9 @@ class OpenSearchPaymentsTests(unittest.TestCase):
             client.create_payments_template()
 
         body = http_mock.call_args.args[2]
+        method_mapping = body["template"]["mappings"]["properties"]["method"]
         metadata_mapping = body["template"]["mappings"]["properties"]["metadata"]
+        self.assertEqual(method_mapping, {"type": "keyword"})
         self.assertEqual(metadata_mapping, {"type": "object", "enabled": False})
 
     def test_create_payments_index_uses_project_partition_name(self):

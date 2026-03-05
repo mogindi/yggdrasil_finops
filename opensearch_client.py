@@ -149,6 +149,7 @@ class OpenSearchClient:
                         "currency": {"type": "keyword"},
                         "amount": {"type": "scaled_float", "scaling_factor": 100},
                         "direction": {"type": "keyword"},
+                        "method": {"type": "keyword"},
                         "status": {"type": "keyword"},
                         "paid_at": {"type": "date"},
                         "ingested_at": {"type": "date"},
