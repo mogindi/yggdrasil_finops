@@ -13,6 +13,10 @@ class CloudKittyClientParsingTests(unittest.TestCase):
             "OS_PASSWORD": "p",
             "OS_PROJECT_ID": "proj",
             "CLOUDKITTY_ENDPOINT": "https://ck.example",
+            "OS_USER_DOMAIN_NAME": "Default",
+            "OS_PROJECT_DOMAIN_NAME": "Default",
+            "OS_INTERFACE": "public",
+            "OS_VERIFY": "true",
         }
         self.env_patcher = patch.dict("os.environ", env, clear=True)
         self.env_patcher.start()
@@ -71,6 +75,7 @@ class CloudKittyClientParsingTests(unittest.TestCase):
         self.assertEqual(ensure_mock.call_count, 3)
 
         services = {item["service"]: item["mappings"] for item in summary["services"]}
+        self.assertEqual(services["volume"], [{"value": "__DEFAULT__", "cost": 0.08}])
         self.assertEqual(services["network.bw.out"], [])
 
     def test_default_hashmap_pricing_accepts_custom_configuration(self):
