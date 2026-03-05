@@ -63,6 +63,17 @@ class CliWrapperTests(unittest.TestCase):
         text = output.getvalue()
         self.assertIn("--project-id PROJECT_ID", text)
         self.assertIn("--invoice-id INVOICE_ID", text)
+        self.assertIn("ISO8601 datetime, e.g. 2026-01-01T00:00:00Z", text)
+
+    def test_help_includes_option_format_examples(self):
+        with patch("sys.stdout", new=io.StringIO()) as output:
+            with self.assertRaises(SystemExit) as exc:
+                yggdrasil_finops.main(["cost", "month", "-h"])
+
+        self.assertEqual(exc.exception.code, 0)
+        text = output.getvalue()
+        self.assertIn("--month YYYY-MM", text)
+        self.assertIn("Month in YYYY-MM format, e.g. 2026-01", text)
 
     def test_cost_monthly_calls_expected_endpoint(self):
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"series": []})) as mocked:
