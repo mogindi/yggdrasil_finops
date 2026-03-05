@@ -47,7 +47,7 @@ No external Python packages are required.
 
 The services print a startup summary showing each relevant variable, whether it came from the environment or a default, and then run early dependency checks.
 
-### OpenStack / CloudKitty (required for `app.py` and `costs_usage_app.py`)
+### OpenStack / CloudKitty (required for `costs_usage_app.py`)
 
 - **Required (must be set):**
   - `OS_AUTH_URL`
@@ -156,20 +156,25 @@ Each backend now runs a dedicated application (`costs_usage_app.py`, `document_g
 
 
 
-## Run the app
+## Run the microservices API
+
+Run the split services (recommended):
 
 ```bash
-source admin-openrc.sh
-python app.py
+docker compose up --build
 ```
 
-For very verbose logging (including every CloudKitty/Keystone API request), run:
+This starts gateway on `http://localhost:8082` and routes to dedicated services:
+- costs usage (`costs_usage_app.py`)
+- document generation (`document_generator_app.py`)
+- checkout (`checkout_app.py`)
+- payments (`payments_app.py`)
+
+For verbose gateway logging:
 
 ```bash
-python app.py --debug
+python gateway_service.py --debug --port 8082
 ```
-
-Then browse to `http://localhost:8082`.
 
 ## CLI wrapper
 
@@ -486,7 +491,7 @@ Invoice and receipt logic is intentionally separated into `billing_service.py` (
 Current design:
 - `BillingService`: business rules for invoice and receipt creation.
 - `InMemoryBillingRepository`: storage adapter used by the monolith now, replaceable with DB/OpenSearch adapter later.
-- HTTP layer (`app.py`) only maps requests to service DTOs and responses.
+- HTTP layer is split across dedicated microservice handlers and the gateway proxy.
 
 ## OpenSearch payment storage per project
 

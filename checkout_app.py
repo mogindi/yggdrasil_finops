@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import os
+from decimal import Decimal, ROUND_HALF_UP
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error, request
@@ -13,6 +14,13 @@ from currency import get_default_currency
 from startup_validation import StartupValidationError, describe_env, ensure_http_url, print_env_resolution, validate_http_endpoint
 
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL")
+
+
+def _to_minor_units(amount: float) -> int:
+    decimal_amount = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return int(decimal_amount * 100)
+
+
 DEBUG_MODE = False
 
 
@@ -58,17 +66,20 @@ class CheckoutHandler(BaseHTTPRequestHandler):
         if remaining_amount <= 0:
             return self._json({"error": f"Invoice '{invoice_id}' is already fully paid"}, status=400)
 
+        amount_minor = body.get("amount")
+        if amount_minor is None:
+            amount_minor = _to_minor_units(remaining_amount)
+
         client = RevolutBusinessClient(debug=DEBUG_MODE)
         try:
+            currency = body.get("currency") or invoice.get("currency") or get_default_currency()
             response = client.create_order(
-                order_id=invoice_id,
-                amount=float(body.get("amount", remaining_amount)),
-                currency=body.get("currency", invoice.get("currency", get_default_currency())),
-                description=body.get("description", invoice.get("description", "Project invoice payment")),
-                customer_email=invoice.get("customer", {}).get("email", ""),
-                success_url=body.get("success_url"),
-                metadata={"project_id": project_id, "invoice_id": invoice_id},
+                amount_minor=int(amount_minor),
+                currency=currency,
             )
+            checkout_url = response.get("checkout_url")
+            if checkout_url:
+                return self._json({"checkout_url": checkout_url}, status=201)
             return self._json(response, status=201)
         except RevolutApiError as exc:
             return self._json({"error": str(exc), "details": exc.body}, status=502)
