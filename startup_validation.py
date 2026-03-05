@@ -54,3 +54,10 @@ def validate_http_endpoint(var_name: str, value: str, *, health_path: str = "/he
 def print_env_resolution(var_name: str, value: str, using_default: bool) -> None:
     source = "default" if using_default else "environment"
     print(f"[startup] {var_name}={value} ({source})")
+
+
+def env_flag_enabled(var_name: str, default: bool = False) -> bool:
+    raw = os.environ.get(var_name)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}

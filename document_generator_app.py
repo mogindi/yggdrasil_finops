@@ -12,6 +12,7 @@ from billing_service import BillingError, BillingService, InMemoryBillingReposit
 from brevo_client import BrevoClient, BrevoError
 from document_service import DocumentError, DocumentService
 from currency import get_default_currency
+from startup_validation import env_flag_enabled
 
 BILLING_SERVICE = BillingService(InMemoryBillingRepository())
 DOCUMENT_SERVICE = DocumentService()
@@ -154,7 +155,7 @@ def run() -> None:
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
     global DEBUG_MODE
-    DEBUG_MODE = args.debug
+    DEBUG_MODE = args.debug or env_flag_enabled("DEBUG", default=False)
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ThreadingHTTPServer(("0.0.0.0", args.port), DocumentGeneratorHandler).serve_forever()

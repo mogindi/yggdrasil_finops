@@ -10,6 +10,7 @@ services:
       DOCUMENT_GENERATOR_SERVICE_URL: http://localhost:8084
       CHECKOUT_SERVICE_URL: http://localhost:8085
       PAYMENTS_SERVICE_URL: http://localhost:8086
+      DEBUG: ${DEBUG:-false}
     depends_on:
       - costs_usage
       - document_generator
@@ -35,6 +36,7 @@ services:
       CLOUDKITTY_ENDPOINT: ${CLOUDKITTY_ENDPOINT:-}
       CLOUDKITTY_CURRENCY: ${CLOUDKITTY_CURRENCY:-DKK}
       OS_VERIFY: ${OS_VERIFY:-true}
+      DEBUG: ${DEBUG:-false}
 
   document_generator:
     build:
@@ -47,6 +49,7 @@ services:
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@example.com}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Yggdrasil FinOps}
+      DEBUG: ${DEBUG:-false}
 
   checkout:
     build:
@@ -60,6 +63,7 @@ services:
       REVOLUT_BUSINESS_API_URL: ${REVOLUT_BUSINESS_API_URL:-https://sandbox-merchant.revolut.com}
       REVOLUT_ORDERS_PATH: ${REVOLUT_ORDERS_PATH:-/api/orders}
       OS_VERIFY: ${OS_VERIFY:-true}
+      DEBUG: ${DEBUG:-false}
 
   payments:
     build:
@@ -70,3 +74,4 @@ services:
     environment:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
       OS_VERIFY: ${OS_VERIFY:-true}
+      DEBUG: ${DEBUG:-false}

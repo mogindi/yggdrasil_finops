@@ -3,7 +3,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from startup_validation import StartupValidationError, describe_env, ensure_http_url, validate_http_endpoint
+from startup_validation import StartupValidationError, describe_env, ensure_http_url, env_flag_enabled, validate_http_endpoint
 
 
 class _OkHandler(BaseHTTPRequestHandler):
@@ -28,6 +28,16 @@ class StartupValidationTests(unittest.TestCase):
     def test_ensure_http_url_rejects_invalid_scheme(self):
         with self.assertRaises(StartupValidationError):
             ensure_http_url("OPENSEARCH_URL", "ftp://example.com")
+
+
+    def test_env_flag_enabled_truthy_values(self):
+        with patch.dict("os.environ", {"DEBUG": "true"}, clear=True):
+            self.assertTrue(env_flag_enabled("DEBUG", default=False))
+
+    def test_env_flag_enabled_uses_default_when_unset(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertFalse(env_flag_enabled("DEBUG", default=False))
+            self.assertTrue(env_flag_enabled("DEBUG", default=True))
 
     def test_validate_http_endpoint_reaches_local_server(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), _OkHandler)
