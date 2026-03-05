@@ -2,6 +2,9 @@ import datetime as dt
 import threading
 import uuid
 from dataclasses import dataclass
+from urllib import parse
+
+from opensearch_client import OpenSearchClient
 
 
 class BillingError(Exception):
@@ -62,6 +65,11 @@ class InMemoryBillingRepository:
             self._invoices.setdefault(project_id, {})[invoice["invoice_id"]] = invoice
         return invoice
 
+    def delete_invoice(self, project_id: str, invoice_id: str) -> bool:
+        with self._lock:
+            project_invoices = self._invoices.get(project_id, {})
+            return project_invoices.pop(invoice_id, None) is not None
+
     def create_receipt(self, project_id: str, receipt: dict) -> dict:
         with self._lock:
             self._receipts.setdefault(project_id, {})[receipt["receipt_id"]] = receipt
@@ -113,6 +121,11 @@ class BillingService:
             raise InvoiceNotFoundError(f"Invoice '{invoice_id}' does not exist for project '{project_id}'")
         return invoice
 
+    def delete_invoice(self, project_id: str, invoice_id: str) -> None:
+        deleted = self._repo.delete_invoice(project_id, invoice_id)
+        if not deleted:
+            raise InvoiceNotFoundError(f"Invoice '{invoice_id}' does not exist for project '{project_id}'")
+
     def create_receipt(self, project_id: str, request: ReceiptCreateRequest) -> dict:
         invoice = self.get_invoice(project_id, request.invoice_id)
         invoice["amount_paid"] = float(invoice.get("amount_paid", 0.0)) + float(request.amount_paid)
@@ -144,3 +157,91 @@ class BillingService:
 
     def list_receipts(self, project_id: str) -> list[dict]:
         return self._repo.list_receipts(project_id)
+
+
+class OpenSearchBillingRepository:
+    def __init__(self, client: OpenSearchClient):
+        self._client = client
+        self._invoices_index = "project-invoices"
+        self._receipts_index = "project-receipts"
+
+    def create_invoice(self, project_id: str, invoice: dict) -> dict:
+        self._client._http_json("PUT", f"/{self._invoices_index}/_doc/{parse.quote(invoice['invoice_id'])}", invoice)
+        return invoice
+
+    def list_invoices(self, project_id: str) -> list[dict]:
+        payload = self._client._http_json(
+            "GET",
+            f"/{self._invoices_index}/_search",
+            {
+                "query": {"term": {"project_id": project_id}},
+                "sort": [{"created_at": "desc"}],
+                "size": 500,
+            },
+        )
+        return [hit.get("_source", {}) for hit in payload.get("hits", {}).get("hits", [])]
+
+    def get_invoice(self, project_id: str, invoice_id: str) -> dict | None:
+        payload = self._client._http_json(
+            "GET",
+            f"/{self._invoices_index}/_search",
+            {
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"project_id": project_id}},
+                            {"term": {"invoice_id": invoice_id}},
+                        ]
+                    }
+                },
+                "size": 1,
+            },
+        )
+        hits = payload.get("hits", {}).get("hits", [])
+        return hits[0].get("_source") if hits else None
+
+    def save_invoice(self, project_id: str, invoice: dict) -> dict:
+        self._client._http_json("PUT", f"/{self._invoices_index}/_doc/{parse.quote(invoice['invoice_id'])}", invoice)
+        return invoice
+
+    def delete_invoice(self, project_id: str, invoice_id: str) -> bool:
+        invoice = self.get_invoice(project_id, invoice_id)
+        if not invoice:
+            return False
+        self._client._http_json("DELETE", f"/{self._invoices_index}/_doc/{parse.quote(invoice_id)}")
+        return True
+
+    def create_receipt(self, project_id: str, receipt: dict) -> dict:
+        self._client._http_json("PUT", f"/{self._receipts_index}/_doc/{parse.quote(receipt['receipt_id'])}", receipt)
+        return receipt
+
+    def get_receipt(self, project_id: str, receipt_id: str) -> dict | None:
+        payload = self._client._http_json(
+            "GET",
+            f"/{self._receipts_index}/_search",
+            {
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"project_id": project_id}},
+                            {"term": {"receipt_id": receipt_id}},
+                        ]
+                    }
+                },
+                "size": 1,
+            },
+        )
+        hits = payload.get("hits", {}).get("hits", [])
+        return hits[0].get("_source") if hits else None
+
+    def list_receipts(self, project_id: str) -> list[dict]:
+        payload = self._client._http_json(
+            "GET",
+            f"/{self._receipts_index}/_search",
+            {
+                "query": {"term": {"project_id": project_id}},
+                "sort": [{"created_at": "desc"}],
+                "size": 500,
+            },
+        )
+        return [hit.get("_source", {}) for hit in payload.get("hits", {}).get("hits", [])]

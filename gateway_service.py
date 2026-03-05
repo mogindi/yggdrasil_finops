@@ -31,6 +31,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def do_PUT(self):
         self._proxy("PUT")
 
+    def do_DELETE(self):
+        self._proxy("DELETE")
+
     def _service_url_for_path(self, path: str) -> str | None:
         if path == "/" or path.startswith("/static/"):
             return COSTS_SERVICE_URL

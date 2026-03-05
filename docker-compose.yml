@@ -52,6 +52,8 @@ services:
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@example.com}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Yggdrasil FinOps}
       CLOUDKITTY_CURRENCY: ${CLOUDKITTY_CURRENCY:-DKK}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
+      OS_VERIFY: ${OS_VERIFY:-true}
       DEBUG: ${DEBUG:-false}
 
   checkout:
