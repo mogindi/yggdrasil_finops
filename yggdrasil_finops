@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
             "invoice_id": args.invoice_id,
             "amount": args.amount,
             "status": args.status,
-            "payment_direction": args.payment_direction,
+            "direction": args.payment_direction,
             "paid_at": args.paid_at,
             "provider": args.provider,
             "method": args.method,
