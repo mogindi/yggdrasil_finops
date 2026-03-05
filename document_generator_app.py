@@ -8,15 +8,31 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest, ReceiptNotFoundError
+from billing_service import (
+    BillingError,
+    BillingService,
+    InMemoryBillingRepository,
+    InvoiceCreateRequest,
+    InvoiceNotFoundError,
+    OpenSearchBillingRepository,
+    ReceiptCreateRequest,
+    ReceiptNotFoundError,
+)
 from brevo_client import BrevoClient, BrevoError
 from document_service import DocumentError, DocumentService
 from currency import get_default_currency
 from startup_validation import env_flag_enabled
 
-BILLING_SERVICE = BillingService(InMemoryBillingRepository())
-DOCUMENT_SERVICE = DocumentService()
 DEBUG_MODE = False
+
+def _build_billing_service() -> BillingService:
+    if os.environ.get("OPENSEARCH_URL"):
+        return BillingService(OpenSearchBillingRepository(debug=DEBUG_MODE))
+    return BillingService(InMemoryBillingRepository())
+
+
+BILLING_SERVICE = _build_billing_service()
+DOCUMENT_SERVICE = DocumentService()
 
 
 class DocumentGeneratorHandler(BaseHTTPRequestHandler):
@@ -158,6 +174,8 @@ def run() -> None:
     DEBUG_MODE = args.debug or env_flag_enabled("DEBUG", default=False)
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    global BILLING_SERVICE
+    BILLING_SERVICE = _build_billing_service()
     ThreadingHTTPServer(("0.0.0.0", args.port), DocumentGeneratorHandler).serve_forever()
 
 

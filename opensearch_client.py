@@ -160,6 +160,88 @@ class OpenSearchClient:
                 return {"acknowledged": True, "already_exists": True, "index": "project-balances"}
             raise
 
+    def create_billing_indexes(self) -> dict[str, Any]:
+        invoice_body = {
+            "settings": {"number_of_shards": 1, "number_of_replicas": 1},
+            "mappings": {
+                "dynamic": "strict",
+                "properties": {
+                    "invoice_id": {"type": "keyword"},
+                    "project_id": {"type": "keyword"},
+                    "customer": {
+                        "properties": {
+                            "name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                            "email": {"type": "keyword"},
+                        }
+                    },
+                    "description": {"type": "text"},
+                    "amount_due": {"type": "scaled_float", "scaling_factor": 100},
+                    "amount_paid": {"type": "scaled_float", "scaling_factor": 100},
+                    "currency": {"type": "keyword"},
+                    "status": {"type": "keyword"},
+                    "created_at": {"type": "date"},
+                    "due_at": {"type": "date", "ignore_malformed": True},
+                    "updated_at": {"type": "date"},
+                },
+            },
+        }
+        receipt_body = {
+            "settings": {"number_of_shards": 1, "number_of_replicas": 1},
+            "mappings": {
+                "dynamic": "strict",
+                "properties": {
+                    "receipt_id": {"type": "keyword"},
+                    "project_id": {"type": "keyword"},
+                    "invoice_id": {"type": "keyword"},
+                    "amount_paid": {"type": "scaled_float", "scaling_factor": 100},
+                    "currency": {"type": "keyword"},
+                    "paid_at": {"type": "date"},
+                    "payment_method": {"type": "keyword"},
+                    "payment_reference": {"type": "keyword"},
+                    "created_at": {"type": "date"},
+                },
+            },
+        }
+
+        indexes: dict[str, Any] = {}
+        for index_name, body in (("project-invoices", invoice_body), ("project-receipts", receipt_body)):
+            try:
+                indexes[index_name] = self._http_json("PUT", f"/{index_name}", body)
+            except OpenSearchApiError as exc:
+                if self._is_resource_already_exists(exc):
+                    indexes[index_name] = {"acknowledged": True, "already_exists": True, "index": index_name}
+                else:
+                    raise
+        return indexes
+
+    def upsert_invoice(self, invoice_id: str, document: dict[str, Any]) -> dict[str, Any]:
+        return self._http_json("PUT", f"/project-invoices/_doc/{parse.quote(invoice_id)}", document)
+
+    def get_invoice(self, invoice_id: str) -> dict[str, Any]:
+        return self._http_json("GET", f"/project-invoices/_doc/{parse.quote(invoice_id)}")
+
+    def search_project_invoices(self, project_id: str, size: int = 200) -> dict[str, Any]:
+        body = {
+            "query": {"term": {"project_id": project_id}},
+            "sort": [{"created_at": "desc"}],
+            "size": size,
+        }
+        return self._http_json("GET", "/project-invoices/_search", body)
+
+    def upsert_receipt(self, receipt_id: str, document: dict[str, Any]) -> dict[str, Any]:
+        return self._http_json("PUT", f"/project-receipts/_doc/{parse.quote(receipt_id)}", document)
+
+    def get_receipt(self, receipt_id: str) -> dict[str, Any]:
+        return self._http_json("GET", f"/project-receipts/_doc/{parse.quote(receipt_id)}")
+
+    def search_project_receipts(self, project_id: str, size: int = 200) -> dict[str, Any]:
+        body = {
+            "query": {"term": {"project_id": project_id}},
+            "sort": [{"created_at": "desc"}],
+            "size": size,
+        }
+        return self._http_json("GET", "/project-receipts/_search", body)
+
     def upsert_payment_event(self, partition: str, event_id: str, document: dict[str, Any]) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
         return self._http_json("PUT", f"/{index_name}/_doc/{parse.quote(event_id)}", document)

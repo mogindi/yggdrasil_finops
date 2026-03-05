@@ -1,4 +1,14 @@
 services:
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    network_mode: host
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+
   gateway:
     build:
       context: .
@@ -50,7 +60,11 @@ services:
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@example.com}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Yggdrasil FinOps}
       CLOUDKITTY_CURRENCY: ${CLOUDKITTY_CURRENCY:-DKK}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
+      OS_VERIFY: ${OS_VERIFY:-true}
       DEBUG: ${DEBUG:-false}
+    depends_on:
+      - opensearch
 
   checkout:
     build:
@@ -76,3 +90,8 @@ services:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
       OS_VERIFY: ${OS_VERIFY:-true}
       DEBUG: ${DEBUG:-false}
+    depends_on:
+      - opensearch
+
+volumes:
+  opensearch-data:

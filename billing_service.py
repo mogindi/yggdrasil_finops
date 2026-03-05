@@ -2,6 +2,9 @@ import datetime as dt
 import threading
 import uuid
 from dataclasses import dataclass
+from typing import Protocol
+
+from opensearch_client import OpenSearchApiError, OpenSearchClient
 
 
 class BillingError(Exception):
@@ -34,6 +37,16 @@ class ReceiptCreateRequest:
     paid_at: str | None = None
     payment_method: str = "unknown"
     payment_reference: str = ""
+
+
+class BillingRepository(Protocol):
+    def create_invoice(self, project_id: str, invoice: dict) -> dict: ...
+    def list_invoices(self, project_id: str) -> list[dict]: ...
+    def get_invoice(self, project_id: str, invoice_id: str) -> dict | None: ...
+    def save_invoice(self, project_id: str, invoice: dict) -> dict: ...
+    def create_receipt(self, project_id: str, receipt: dict) -> dict: ...
+    def get_receipt(self, project_id: str, receipt_id: str) -> dict | None: ...
+    def list_receipts(self, project_id: str) -> list[dict]: ...
 
 
 class InMemoryBillingRepository:
@@ -76,8 +89,60 @@ class InMemoryBillingRepository:
             return list(self._receipts.get(project_id, {}).values())
 
 
+class OpenSearchBillingRepository:
+    def __init__(self, debug: bool = False):
+        self._client = OpenSearchClient(debug=debug)
+        self._client.create_billing_indexes()
+
+    @staticmethod
+    def _extract_source(hit: dict) -> dict:
+        return hit.get("_source", {})
+
+    def create_invoice(self, project_id: str, invoice: dict) -> dict:
+        self._client.upsert_invoice(invoice["invoice_id"], invoice)
+        return invoice
+
+    def list_invoices(self, project_id: str) -> list[dict]:
+        result = self._client.search_project_invoices(project_id)
+        return [self._extract_source(hit) for hit in result.get("hits", {}).get("hits", [])]
+
+    def get_invoice(self, project_id: str, invoice_id: str) -> dict | None:
+        try:
+            invoice = self._extract_source(self._client.get_invoice(invoice_id))
+        except OpenSearchApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        if invoice.get("project_id") != project_id:
+            return None
+        return invoice
+
+    def save_invoice(self, project_id: str, invoice: dict) -> dict:
+        self._client.upsert_invoice(invoice["invoice_id"], invoice)
+        return invoice
+
+    def create_receipt(self, project_id: str, receipt: dict) -> dict:
+        self._client.upsert_receipt(receipt["receipt_id"], receipt)
+        return receipt
+
+    def get_receipt(self, project_id: str, receipt_id: str) -> dict | None:
+        try:
+            receipt = self._extract_source(self._client.get_receipt(receipt_id))
+        except OpenSearchApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        if receipt.get("project_id") != project_id:
+            return None
+        return receipt
+
+    def list_receipts(self, project_id: str) -> list[dict]:
+        result = self._client.search_project_receipts(project_id)
+        return [self._extract_source(hit) for hit in result.get("hits", {}).get("hits", [])]
+
+
 class BillingService:
-    def __init__(self, repository: InMemoryBillingRepository):
+    def __init__(self, repository: BillingRepository):
         self._repo = repository
 
     @staticmethod
