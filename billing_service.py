@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from urllib import parse
 
-from opensearch_client import OpenSearchClient
+from opensearch_client import OpenSearchApiError, OpenSearchClient
 
 
 class BillingError(Exception):
@@ -166,41 +166,74 @@ class OpenSearchBillingRepository:
         self._receipts_index = "project-receipts"
 
     def create_invoice(self, project_id: str, invoice: dict) -> dict:
+        self._ensure_index_exists(self._invoices_index)
         self._client._http_json("PUT", f"/{self._invoices_index}/_doc/{parse.quote(invoice['invoice_id'])}", invoice)
         return invoice
 
-    def list_invoices(self, project_id: str) -> list[dict]:
-        payload = self._client._http_json(
-            "GET",
-            f"/{self._invoices_index}/_search",
-            {
-                "query": {"term": {"project_id": project_id}},
-                "sort": [{"created_at": "desc"}],
-                "size": 500,
-            },
+    @staticmethod
+    def _is_missing_index(exc: OpenSearchApiError) -> bool:
+        return exc.status_code == 404 and "no such index" in str(exc).lower()
+
+    @staticmethod
+    def _is_resource_already_exists(exc: OpenSearchApiError) -> bool:
+        body = (exc.body or "").lower()
+        message = str(exc).lower()
+        return exc.status_code == 400 and (
+            "resource_already_exists_exception" in body
+            or "resource_already_exists_exception" in message
         )
+
+    def _ensure_index_exists(self, index_name: str) -> None:
+        try:
+            self._client._http_json("PUT", f"/{index_name}")
+        except OpenSearchApiError as exc:
+            if self._is_resource_already_exists(exc):
+                return
+            raise
+
+    def list_invoices(self, project_id: str) -> list[dict]:
+        try:
+            payload = self._client._http_json(
+                "GET",
+                f"/{self._invoices_index}/_search",
+                {
+                    "query": {"term": {"project_id": project_id}},
+                    "sort": [{"created_at": "desc"}],
+                    "size": 500,
+                },
+            )
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return []
+            raise
         return [hit.get("_source", {}) for hit in payload.get("hits", {}).get("hits", [])]
 
     def get_invoice(self, project_id: str, invoice_id: str) -> dict | None:
-        payload = self._client._http_json(
-            "GET",
-            f"/{self._invoices_index}/_search",
-            {
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"project_id": project_id}},
-                            {"term": {"invoice_id": invoice_id}},
-                        ]
-                    }
+        try:
+            payload = self._client._http_json(
+                "GET",
+                f"/{self._invoices_index}/_search",
+                {
+                    "query": {
+                        "bool": {
+                            "filter": [
+                                {"term": {"project_id": project_id}},
+                                {"term": {"invoice_id": invoice_id}},
+                            ]
+                        }
+                    },
+                    "size": 1,
                 },
-                "size": 1,
-            },
-        )
+            )
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return None
+            raise
         hits = payload.get("hits", {}).get("hits", [])
         return hits[0].get("_source") if hits else None
 
     def save_invoice(self, project_id: str, invoice: dict) -> dict:
+        self._ensure_index_exists(self._invoices_index)
         self._client._http_json("PUT", f"/{self._invoices_index}/_doc/{parse.quote(invoice['invoice_id'])}", invoice)
         return invoice
 
@@ -212,36 +245,47 @@ class OpenSearchBillingRepository:
         return True
 
     def create_receipt(self, project_id: str, receipt: dict) -> dict:
+        self._ensure_index_exists(self._receipts_index)
         self._client._http_json("PUT", f"/{self._receipts_index}/_doc/{parse.quote(receipt['receipt_id'])}", receipt)
         return receipt
 
     def get_receipt(self, project_id: str, receipt_id: str) -> dict | None:
-        payload = self._client._http_json(
-            "GET",
-            f"/{self._receipts_index}/_search",
-            {
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"project_id": project_id}},
-                            {"term": {"receipt_id": receipt_id}},
-                        ]
-                    }
+        try:
+            payload = self._client._http_json(
+                "GET",
+                f"/{self._receipts_index}/_search",
+                {
+                    "query": {
+                        "bool": {
+                            "filter": [
+                                {"term": {"project_id": project_id}},
+                                {"term": {"receipt_id": receipt_id}},
+                            ]
+                        }
+                    },
+                    "size": 1,
                 },
-                "size": 1,
-            },
-        )
+            )
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return None
+            raise
         hits = payload.get("hits", {}).get("hits", [])
         return hits[0].get("_source") if hits else None
 
     def list_receipts(self, project_id: str) -> list[dict]:
-        payload = self._client._http_json(
-            "GET",
-            f"/{self._receipts_index}/_search",
-            {
-                "query": {"term": {"project_id": project_id}},
-                "sort": [{"created_at": "desc"}],
-                "size": 500,
-            },
-        )
+        try:
+            payload = self._client._http_json(
+                "GET",
+                f"/{self._receipts_index}/_search",
+                {
+                    "query": {"term": {"project_id": project_id}},
+                    "sort": [{"created_at": "desc"}],
+                    "size": 500,
+                },
+            )
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return []
+            raise
         return [hit.get("_source", {}) for hit in payload.get("hits", {}).get("hits", [])]
