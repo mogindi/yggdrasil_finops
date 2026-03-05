@@ -49,6 +49,7 @@ services:
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@example.com}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Yggdrasil FinOps}
+      CLOUDKITTY_CURRENCY: ${CLOUDKITTY_CURRENCY:-DKK}
       DEBUG: ${DEBUG:-false}
 
   checkout:
