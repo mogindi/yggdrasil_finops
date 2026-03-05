@@ -22,15 +22,27 @@ def _to_minor_units(amount: float) -> int:
 
 
 DEBUG_MODE = False
+LOGGER = logging.getLogger("checkout_app")
 
 
 class CheckoutHandler(BaseHTTPRequestHandler):
+    def _log_api_request(self):
+        if self.path.startswith("/api/") or self.path == "/healthz":
+            LOGGER.debug(
+                "API call: method=%s path=%s content_length=%s",
+                self.command,
+                self.path,
+                self.headers.get("Content-Length", "0"),
+            )
+
     def do_GET(self):
+        self._log_api_request()
         if self.path == "/healthz":
             return self._json({"status": "ok", "service": "checkout"})
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self):
+        self._log_api_request()
         parts = urlparse(self.path).path.split("/")
         if len(parts) == 7 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments" and parts[5] == "revolut" and parts[6] == "order":
             return self._project_payments_revolut_create(parts[3])
@@ -88,6 +100,14 @@ class CheckoutHandler(BaseHTTPRequestHandler):
 
     def _json(self, payload: dict, status: int = 200):
         body = json.dumps(payload).encode("utf-8")
+        if self.path.startswith("/api/") or self.path == "/healthz":
+            LOGGER.debug(
+                "API response: method=%s path=%s status=%s payload_bytes=%s",
+                self.command,
+                self.path,
+                status,
+                len(body),
+            )
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

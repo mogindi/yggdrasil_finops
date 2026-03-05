@@ -16,6 +16,7 @@ from startup_validation import describe_env, env_flag_enabled, print_env_resolut
 
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
+LOGGER = logging.getLogger("costs_usage_app")
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -48,7 +49,17 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
+    def _log_api_request(self):
+        if self.path.startswith("/api/") or self.path == "/healthz":
+            LOGGER.debug(
+                "API call: method=%s path=%s content_length=%s",
+                self.command,
+                self.path,
+                self.headers.get("Content-Length", "0"),
+            )
+
     def do_GET(self):
+        self._log_api_request()
         parsed = urlparse(self.path)
         if parsed.path == "/":
             return self._serve_file(ROOT / "templates" / "index.html", "text/html")
@@ -148,6 +159,14 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
 
     def _json(self, payload: dict, status: int = 200):
         body = json.dumps(payload).encode("utf-8")
+        if self.path.startswith("/api/") or self.path == "/healthz":
+            LOGGER.debug(
+                "API response: method=%s path=%s status=%s payload_bytes=%s",
+                self.command,
+                self.path,
+                status,
+                len(body),
+            )
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -156,6 +175,14 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
 
     def _html(self, payload: str):
         body = payload.encode("utf-8")
+        if self.path.startswith("/api/"):
+            LOGGER.debug(
+                "API response: method=%s path=%s status=%s content_type=text/html payload_bytes=%s",
+                self.command,
+                self.path,
+                HTTPStatus.OK,
+                len(body),
+            )
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
