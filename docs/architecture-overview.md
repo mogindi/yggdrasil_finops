@@ -7,11 +7,11 @@ This repository is organized as a small microservice platform for FinOps use cas
 ```mermaid
 graph TD
     U[User / API Client / CLI]
-    G[gateway_service.py\n:8082]
-    C[costs_usage_app.py\n:8083]
-    D[document_generator_app.py\n:8084]
-    K[checkout_app.py\n:8085]
-    P[payments_app.py\n:8086]
+    G[gateway_service.py :8082]
+    C[costs_usage_app.py :8083]
+    D[document_generator_app.py :8084]
+    K[checkout_app.py :8085]
+    P[payments_app.py :8086]
 
     CK[(CloudKitty API)]
     KS[(Keystone Auth)]
