@@ -82,7 +82,7 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
         client = CloudKittyClient(debug=DEBUG_MODE)
         try:
             client.ensure_project_exists(project_id)
-            aggregate = client.get_project_aggregate(project_id, start, end)
+            aggregate = client.get_project_aggregate_for_range(project_id, start, end)
             series = client.get_project_time_series(project_id, start, end, resolution) if include_series else []
         except ProjectNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
