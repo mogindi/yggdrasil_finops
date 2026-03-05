@@ -7,7 +7,6 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, parse, request
-from currency import get_default_currency
 from argparse import _SubParsersAction
 
 
@@ -94,12 +93,6 @@ def _add_base_and_project_args(parser: argparse.ArgumentParser, *, require_proje
         parser.add_argument("--project-id", required=True, metavar="PROJECT_ID", help="Project identifier, e.g. proj_123")
 
 
-def _safe_default_currency() -> str:
-    try:
-        return get_default_currency()
-    except KeyError:
-        return "USD"
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -148,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     payment_create.add_argument("--event-id", required=True, metavar="EVENT_ID", help="Payment event ID, e.g. evt_1")
     payment_create.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
     payment_create.add_argument("--amount", required=True, type=float, metavar="AMOUNT", help="Payment amount, e.g. 10.50")
-    payment_create.add_argument("--currency", default=_safe_default_currency(), metavar="CURRENCY", help="Currency code, e.g. USD")
+    payment_create.add_argument("--currency", metavar="CURRENCY", help="Currency code, e.g. DKK")
     payment_create.add_argument("--status", default="captured", metavar="STATUS", help="Payment status, e.g. captured")
     payment_create.add_argument("--payment-direction", default="inbound", metavar="DIRECTION", help="Payment direction, e.g. inbound")
     payment_create.add_argument("--paid-at", required=True, metavar="DATETIME", help="ISO8601 datetime, e.g. 2026-01-01T00:00:00Z")
@@ -179,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     invoice_create = invoice_sub.add_parser("create", help="Create an invoice")
     _add_base_and_project_args(invoice_create)
     invoice_create.add_argument("--amount-due", required=True, type=float, metavar="AMOUNT", help="Invoice amount, e.g. 250.00")
-    invoice_create.add_argument("--currency", default=_safe_default_currency(), metavar="CURRENCY", help="Currency code, e.g. USD")
+    invoice_create.add_argument("--currency", metavar="CURRENCY", help="Currency code, e.g. DKK")
     invoice_create.add_argument("--customer-name", required=True, metavar="NAME", help="Customer name, e.g. Jane Doe")
     invoice_create.add_argument("--customer-email", required=True, metavar="EMAIL", help="Customer email, e.g. billing@example.com")
     invoice_create.add_argument("--due-at", required=True, metavar="DATE", help="Due date (YYYY-MM-DD), e.g. 2026-01-31")
@@ -208,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_base_and_project_args(receipt_create)
     receipt_create.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
     receipt_create.add_argument("--amount-paid", required=True, type=float, metavar="AMOUNT", help="Amount paid, e.g. 250.00")
-    receipt_create.add_argument("--currency", default=_safe_default_currency(), metavar="CURRENCY", help="Currency code, e.g. USD")
+    receipt_create.add_argument("--currency", metavar="CURRENCY", help="Currency code, e.g. DKK")
     receipt_create.add_argument("--paid-at", required=True, metavar="DATETIME", help="ISO8601 datetime, e.g. 2026-01-01T00:00:00Z")
     receipt_create.add_argument("--payment-method", default="unknown", metavar="METHOD", help="Payment method, e.g. bank_transfer")
     receipt_create.add_argument("--payment-reference", default="", metavar="REFERENCE", help="Optional payment reference, e.g. TXN-1001")
@@ -309,7 +302,6 @@ def main(argv: list[str] | None = None) -> int:
         payload = {
             "invoice_id": args.invoice_id,
             "amount": args.amount,
-            "currency": args.currency,
             "status": args.status,
             "payment_direction": args.payment_direction,
             "paid_at": args.paid_at,
@@ -317,6 +309,8 @@ def main(argv: list[str] | None = None) -> int:
             "method": args.method,
             "reference": args.reference,
         }
+        if args.currency:
+            payload["currency"] = args.currency
         return _print_response(client.request_json("PUT", f"/api/projects/{args.project_id}/payments/events/{args.event_id}", payload))
     if args.resource == "payment" and args.action == "list":
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments?size={args.size}"))
@@ -335,12 +329,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.resource == "invoice" and args.action == "create":
         payload = {
             "amount_due": args.amount_due,
-            "currency": args.currency,
             "customer_name": args.customer_name,
             "customer_email": args.customer_email,
             "due_at": args.due_at,
             "description": args.description,
         }
+        if args.currency:
+            payload["currency"] = args.currency
         return _print_response(client.request_json("POST", f"/api/projects/{args.project_id}/invoices", payload))
     if args.resource == "invoice" and args.action == "list":
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/invoices"))
@@ -377,11 +372,12 @@ def main(argv: list[str] | None = None) -> int:
         payload = {
             "invoice_id": args.invoice_id,
             "amount_paid": args.amount_paid,
-            "currency": args.currency,
             "paid_at": args.paid_at,
             "payment_method": args.payment_method,
             "payment_reference": args.payment_reference,
         }
+        if args.currency:
+            payload["currency"] = args.currency
         return _print_response(client.request_json("POST", f"/api/projects/{args.project_id}/receipts", payload))
     if args.resource == "receipt" and args.action == "list":
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/receipts"))
