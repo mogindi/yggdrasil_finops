@@ -35,6 +35,10 @@ class ConfigureCloudKittyDefaultsTests(unittest.TestCase):
 
         self.assertTrue(expected_flavors.issubset(configured_flavors))
 
+
+    def test_default_pricing_uses_default_volume_type(self):
+        self.assertEqual(cfg.DEFAULT_PRICING["volume"], [{"value": "__DEFAULT__", "cost": 0.08}])
+
     def test_get_openstack_flavor_names_handles_missing_cli(self):
         with patch("subprocess.run", side_effect=FileNotFoundError), patch("sys.stdout", new_callable=io.StringIO) as out:
             names = cfg.get_openstack_flavor_names()

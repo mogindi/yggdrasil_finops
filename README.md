@@ -557,8 +557,7 @@ python scripts/configure_cloudkitty_defaults.py --pricing-config ./cloudkitty-pr
     {"value": "m2.tiny", "cost": 0.0125}
   ],
   "volume": [
-    {"value": "standard", "cost": 0.08},
-    {"value": "ssd", "cost": 0.15}
+    {"value": "__DEFAULT__", "cost": 0.08}
   ],
   "network.bw.out": []
 }

@@ -26,8 +26,7 @@ DEFAULT_PRICING: dict[str, list[dict[str, Any]]] = {
         {"value": "m2.tiny", "cost": 0.0125},
     ],
     "volume": [
-        {"value": "standard", "cost": 0.08},
-        {"value": "ssd", "cost": 0.15},
+        {"value": "__DEFAULT__", "cost": 0.08},
     ],
     # Intentionally empty by default: networking egress should not be charged here.
     "network.bw.out": [],

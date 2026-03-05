@@ -278,7 +278,7 @@ class CloudKittyClient:
         self._debug("Ensuring default hashmap pricing")
         defaults = pricing or {
             "instance": [{"value": "small", "cost": 0.025}, {"value": "medium", "cost": 0.06}, {"value": "large", "cost": 0.10}],
-            "volume": [{"value": "standard", "cost": 0.08}, {"value": "ssd", "cost": 0.15}],
+            "volume": [{"value": "__DEFAULT__", "cost": 0.08}],
             # Intentionally empty: networking egress is left unpriced by default.
             "network.bw.out": [],
         }
