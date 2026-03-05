@@ -15,7 +15,7 @@ DEFAULT_BASE_URL = os.environ.get("YGGDRASIL_FINOPS_API_URL", "http://localhost:
 
 def _safe_default_currency() -> str:
     """Best-effort currency default for CLI argument defaults."""
-    return (os.environ.get("CLOUDKITTY_CURRENCY") or "DKK").upper()
+    return (os.environ.get("CLOUDKITTY_CURRENCY")).upper()
 
 
 @dataclass
