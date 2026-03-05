@@ -32,6 +32,14 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 - Script to preconfigure CloudKitty hashmap pricing defaults.
 - Revolut Business order creation for invoice checkout links.
 
+## Architecture documentation
+
+See the `docs/` folder for system-level documentation:
+
+- `docs/architecture-overview.md`
+- `docs/service-routing.md`
+- `docs/request-flows.md`
+
 ## Prerequisites
 
 - Python 3.11+
