@@ -4,7 +4,7 @@ import unittest
 import zlib
 from pathlib import Path
 
-from document_service import DocumentError, DocumentService
+from document_service import DocumentService
 
 
 class DocumentServiceLogoFormatTests(unittest.TestCase):
@@ -36,14 +36,46 @@ class DocumentServiceLogoFormatTests(unittest.TestCase):
         self.assertIn(b"/Filter /FlateDecode", pdf)
         self.assertIn(b"/Subtype /Image", pdf)
 
-    def test_png_with_alpha_is_rejected(self):
+    def test_png_with_alpha_is_embedded_in_pdf(self):
         service = DocumentService()
         with tempfile.TemporaryDirectory() as tmp:
             logo_path = Path(tmp) / "logo_alpha.png"
             # One RGBA pixel: filter=0, R,G,B,A
             self._write_png(logo_path, width=1, height=1, color_type=6, raw_scanlines=b"\x00\x00\x00\x00\xff")
-            with self.assertRaises(DocumentError):
-                service.build_invoice_pdf({"invoice_id": "inv_1"}, logo_path=str(logo_path))
+            pdf = service.build_invoice_pdf({"invoice_id": "inv_1"}, logo_path=str(logo_path))
+
+        self.assertIn(b"/Filter /FlateDecode", pdf)
+        self.assertIn(b"/Subtype /Image", pdf)
+
+    def test_png_palette_logo_is_embedded_in_pdf(self):
+        service = DocumentService()
+        with tempfile.TemporaryDirectory() as tmp:
+            logo_path = Path(tmp) / "logo_palette.png"
+
+            def chunk(kind: bytes, payload: bytes) -> bytes:
+                import struct
+                import zlib as _z
+
+                return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", _z.crc32(kind + payload) & 0xFFFFFFFF)
+
+            import struct
+
+            ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 3, 0, 0, 0)
+            plte = bytes([255, 0, 0])
+            raw_scanlines = b"\x00\x00"  # filter=0, palette index=0
+            compressed = zlib.compress(raw_scanlines)
+            png = (
+                b"\x89PNG\r\n\x1a\n"
+                + chunk(b"IHDR", ihdr)
+                + chunk(b"PLTE", plte)
+                + chunk(b"IDAT", compressed)
+                + chunk(b"IEND", b"")
+            )
+            logo_path.write_bytes(png)
+            pdf = service.build_invoice_pdf({"invoice_id": "inv_1"}, logo_path=str(logo_path))
+
+        self.assertIn(b"/Filter /FlateDecode", pdf)
+        self.assertIn(b"/Subtype /Image", pdf)
 
 
 if __name__ == "__main__":
