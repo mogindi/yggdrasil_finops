@@ -1,8 +1,25 @@
 import json
+import os
+import importlib.util
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-import yggdrasil_finops
+
+def _load_cli_module():
+    cli_path = Path(__file__).resolve().parents[1] / "yggdrasil_finops"
+    loader = SourceFileLoader("yggdrasil_finops", str(cli_path))
+    spec = importlib.util.spec_from_loader("yggdrasil_finops", loader)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
+
+
+yggdrasil_finops = _load_cli_module()
+os.environ.setdefault("CLOUDKITTY_CURRENCY", "USD")
+
 
 
 class FakeResponse:

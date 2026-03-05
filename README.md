@@ -121,7 +121,7 @@ The project now supports a microservice topology while keeping a **unified endpo
 - `checkout` (Revolut Business order creation endpoint)
 - `payments` (OpenSearch payment ledger endpoints)
 
-All API clients (including `yggdrasil_finops.py`) should continue to use a single base URL, e.g. `http://localhost:8082`.
+All API clients (including `yggdrasil_finops`) should continue to use a single base URL, e.g. `http://localhost:8082`.
 
 Start everything:
 
@@ -181,42 +181,42 @@ python gateway_service.py --debug --port 8082
 You can call the API with a simple CLI wrapper:
 
 ```bash
-python yggdrasil_finops.py --help
+python yggdrasil_finops --help
 ```
 
 Examples using intuitive `setup/create/list/show` command patterns:
 
 ```bash
 # project setup
-python yggdrasil_finops.py project setup --project-id proj_123
+python yggdrasil_finops project setup --project-id proj_123
 
 # payment create/list/show
-python yggdrasil_finops.py payment create \
+python yggdrasil_finops payment create \
   --project-id proj_123 \
   --event-id evt_001 \
   --invoice-id inv_001 \
   --amount 100.00 \
   --paid-at 2026-01-10T12:00:00Z
-python yggdrasil_finops.py payment list --project-id proj_123
-python yggdrasil_finops.py payment show --project-id proj_123 --event-id evt_001
+python yggdrasil_finops payment list --project-id proj_123
+python yggdrasil_finops payment show --project-id proj_123 --event-id evt_001
 
 # invoice create/list/show
-python yggdrasil_finops.py invoice create \
+python yggdrasil_finops invoice create \
   --project-id proj_123 \
   --amount-due 100.00 \
   --customer-name "Acme Corp" \
   --customer-email billing@acme.example \
   --due-at 2026-02-01T00:00:00Z
-python yggdrasil_finops.py invoice list --project-id proj_123
-python yggdrasil_finops.py invoice show --project-id proj_123 --invoice-id inv_001
+python yggdrasil_finops invoice list --project-id proj_123
+python yggdrasil_finops invoice show --project-id proj_123 --invoice-id inv_001
 
 # receipt create/list
-python yggdrasil_finops.py receipt create \
+python yggdrasil_finops receipt create \
   --project-id proj_123 \
   --invoice-id inv_001 \
   --amount-paid 100.00 \
   --paid-at 2026-01-11T14:30:00Z
-python yggdrasil_finops.py receipt list --project-id proj_123
+python yggdrasil_finops receipt list --project-id proj_123
 ```
 
 Set `YGGDRASIL_FINOPS_API_URL` (or pass `--api-url`) if your API is not on `http://localhost:8082`.
@@ -225,8 +225,8 @@ End-to-end customer lifecycle examples (CLI):
 
 ```bash
 # 1) Customer onboarding (initialize project + first invoice)
-python yggdrasil_finops.py project setup --project-id cust_acme_001
-python yggdrasil_finops.py invoice create \
+python yggdrasil_finops project setup --project-id cust_acme_001
+python yggdrasil_finops invoice create \
   --project-id cust_acme_001 \
   --amount-due 250.00 \
   --customer-name "Acme Corp" \
@@ -235,29 +235,29 @@ python yggdrasil_finops.py invoice create \
   --description "Initial onboarding month"
 
 # 2) Normal monthly usage + graphing
-python yggdrasil_finops.py cost month \
+python yggdrasil_finops cost month \
   --project-id cust_acme_001 \
   --month 2026-01 \
   --resolution day \
   --include-series
-python yggdrasil_finops.py cost monthly --project-id cust_acme_001
-python yggdrasil_finops.py cost monthly-graph --project-id cust_acme_001 > monthly_graph.html
+python yggdrasil_finops cost monthly --project-id cust_acme_001
+python yggdrasil_finops cost monthly-graph --project-id cust_acme_001 > monthly_graph.html
 
 # 3) Customer off-boarding (final invoice + final receipt, then verify history)
-python yggdrasil_finops.py invoice create \
+python yggdrasil_finops invoice create \
   --project-id cust_acme_001 \
   --amount-due 89.50 \
   --customer-name "Acme Corp" \
   --customer-email billing@acme.example \
   --due-at 2026-03-01T00:00:00Z \
   --description "Final off-boarding charges"
-python yggdrasil_finops.py receipt create \
+python yggdrasil_finops receipt create \
   --project-id cust_acme_001 \
   --invoice-id <FINAL_INVOICE_ID> \
   --amount-paid 89.50 \
   --paid-at 2026-03-02T11:00:00Z
-python yggdrasil_finops.py invoice list --project-id cust_acme_001
-python yggdrasil_finops.py receipt list --project-id cust_acme_001
+python yggdrasil_finops invoice list --project-id cust_acme_001
+python yggdrasil_finops receipt list --project-id cust_acme_001
 ```
 
 
@@ -265,13 +265,13 @@ PDF commands in CLI:
 
 ```bash
 # generate + download invoice PDF
-python yggdrasil_finops.py invoice file   --project-id proj_123   --invoice-id inv_001   --logo-path ./logo.jpg   --download-path ./inv_001.pdf
+python yggdrasil_finops invoice file   --project-id proj_123   --invoice-id inv_001   --logo-path ./logo.jpg   --download-path ./inv_001.pdf
 
 # show invoice PDF as HTML (for browser rendering)
-python yggdrasil_finops.py invoice file --project-id proj_123 --invoice-id inv_001 --html
+python yggdrasil_finops invoice file --project-id proj_123 --invoice-id inv_001 --html
 
 # send receipt PDF using Brevo
-python yggdrasil_finops.py receipt file --project-id proj_123 --receipt-id rcpt_001 --send-email
+python yggdrasil_finops receipt file --project-id proj_123 --receipt-id rcpt_001 --send-email
 ```
 
 ## API examples
