@@ -35,6 +35,28 @@ class OpenSearchClient:
         if self.debug:
             self._logger.debug(message)
 
+    @staticmethod
+    def _extract_error_reason(error_body: str) -> str | None:
+        if not error_body:
+            return None
+        try:
+            payload = json.loads(error_body)
+        except json.JSONDecodeError:
+            return None
+        error = payload.get("error")
+        if isinstance(error, dict):
+            root_cause = error.get("root_cause")
+            if isinstance(root_cause, list) and root_cause:
+                reason = root_cause[0].get("reason")
+                if reason:
+                    return str(reason)
+            reason = error.get("reason")
+            if reason:
+                return str(reason)
+        if isinstance(error, str):
+            return error
+        return None
+
     def _http_json(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         url = f"{self.endpoint}{path}"
         data = None
@@ -52,7 +74,14 @@ class OpenSearchClient:
         except HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
             self._debug(f"OpenSearch API error: method={method} url={url} status={exc.code} body={error_body[:500]}")
-            raise OpenSearchApiError(f"OpenSearch request failed ({exc.code})", status_code=exc.code, url=url, body=error_body) from exc
+            reason = self._extract_error_reason(error_body) or str(getattr(exc, "reason", "")).strip()
+            details = f": {reason}" if reason else ""
+            raise OpenSearchApiError(
+                f"OpenSearch request failed ({exc.code}) method={method} url={url}{details}",
+                status_code=exc.code,
+                url=url,
+                body=error_body,
+            ) from exc
         except URLError as exc:
             self._debug(f"OpenSearch connection error: method={method} url={url} reason={exc.reason}")
             raise OpenSearchError(f"Failed to connect to OpenSearch at {self.endpoint}: {exc.reason}") from exc
@@ -69,7 +98,14 @@ class OpenSearchClient:
         except HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
             self._debug(f"OpenSearch bulk API error: url={url} status={exc.code} body={error_body[:500]}")
-            raise OpenSearchApiError(f"OpenSearch bulk request failed ({exc.code})", status_code=exc.code, url=url, body=error_body) from exc
+            reason = self._extract_error_reason(error_body) or str(getattr(exc, "reason", "")).strip()
+            details = f": {reason}" if reason else ""
+            raise OpenSearchApiError(
+                f"OpenSearch bulk request failed ({exc.code}) method=POST url={url}{details}",
+                status_code=exc.code,
+                url=url,
+                body=error_body,
+            ) from exc
         except URLError as exc:
             self._debug(f"OpenSearch connection error: method=POST url={url} reason={exc.reason}")
             raise OpenSearchError(f"Failed to connect to OpenSearch at {self.endpoint}: {exc.reason}") from exc
