@@ -16,6 +16,7 @@ COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL")
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL")
 CHECKOUT_SERVICE_URL = os.environ.get("CHECKOUT_SERVICE_URL")
 PAYMENTS_SERVICE_URL = os.environ.get("PAYMENTS_SERVICE_URL")
+LOGGER = logging.getLogger("gateway_service")
 
 
 class GatewayHandler(BaseHTTPRequestHandler):
@@ -51,18 +52,34 @@ class GatewayHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         base = self._service_url_for_path(parsed.path)
         if not base:
+            LOGGER.debug("Gateway route miss: method=%s path=%s", method, self.path)
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
 
         target = f"{base}{self.path}"
         content_length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(content_length) if content_length > 0 else None
+        LOGGER.debug(
+            "Gateway API call: method=%s path=%s target=%s content_length=%s",
+            method,
+            self.path,
+            target,
+            content_length,
+        )
 
         outbound_headers = {k: v for k, v in self.headers.items() if k.lower() != "host"}
         req = request.Request(target, data=body, headers=outbound_headers, method=method)
         try:
             with request.urlopen(req) as upstream:
                 payload = upstream.read()
+                LOGGER.debug(
+                    "Gateway API response: method=%s path=%s target=%s status=%s payload_bytes=%s",
+                    method,
+                    self.path,
+                    target,
+                    upstream.status,
+                    len(payload),
+                )
                 self.send_response(upstream.status)
                 for key, value in upstream.headers.items():
                     if key.lower() in {"transfer-encoding", "connection", "server", "date"}:
@@ -73,6 +90,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.wfile.write(payload)
         except error.HTTPError as exc:
             payload = exc.read()
+            LOGGER.debug(
+                "Gateway API upstream error: method=%s path=%s target=%s status=%s payload_bytes=%s",
+                method,
+                self.path,
+                target,
+                exc.code,
+                len(payload),
+            )
             self.send_response(exc.code)
             content_type = exc.headers.get("Content-Type", "application/json")
             self.send_header("Content-Type", content_type)
@@ -81,6 +106,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
         except (error.URLError, http.client.RemoteDisconnected, ConnectionResetError, TimeoutError) as exc:
             reason = getattr(exc, "reason", str(exc))
+            LOGGER.debug(
+                "Gateway API connection error: method=%s path=%s target=%s reason=%s",
+                method,
+                self.path,
+                target,
+                reason,
+            )
             self._json({"error": f"upstream unavailable: {reason}"}, status=502)
 
     def _json(self, payload: dict, status: int = 200):
@@ -101,6 +133,7 @@ def run() -> None:
     debug_mode = args.debug or env_flag_enabled("DEBUG", default=False)
     if debug_mode:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        LOGGER.debug("Gateway debug logging enabled")
 
     for var_name, health_path in [
         ("COSTS_SERVICE_URL", "/healthz"),
