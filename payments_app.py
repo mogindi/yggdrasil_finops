@@ -14,6 +14,7 @@ from startup_validation import describe_env, env_flag_enabled, print_env_resolut
 
 
 DEBUG_MODE = False
+LOGGER = logging.getLogger("payments_app")
 
 
 def _payments_partition(project_id: str) -> str:
@@ -21,7 +22,17 @@ def _payments_partition(project_id: str) -> str:
 
 
 class PaymentsHandler(BaseHTTPRequestHandler):
+    def _log_api_request(self):
+        if self.path.startswith("/api/") or self.path == "/healthz":
+            LOGGER.debug(
+                "API call: method=%s path=%s content_length=%s",
+                self.command,
+                self.path,
+                self.headers.get("Content-Length", "0"),
+            )
+
     def do_GET(self):
+        self._log_api_request()
         parsed = urlparse(self.path)
         if parsed.path == "/healthz":
             return self._json({"status": "ok", "service": "payments"})
@@ -31,12 +42,14 @@ class PaymentsHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self):
+        self._log_api_request()
         parts = urlparse(self.path).path.split("/")
         if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
             return self._project_payments_post(parts[3], parts)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_PUT(self):
+        self._log_api_request()
         parts = urlparse(self.path).path.split("/")
         if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "payments":
             return self._project_payments_put(parts[3], parts)
@@ -114,6 +127,14 @@ class PaymentsHandler(BaseHTTPRequestHandler):
 
     def _json(self, payload: dict, status: int = 200):
         body = json.dumps(payload).encode("utf-8")
+        if self.path.startswith("/api/") or self.path == "/healthz":
+            LOGGER.debug(
+                "API response: method=%s path=%s status=%s payload_bytes=%s",
+                self.command,
+                self.path,
+                status,
+                len(body),
+            )
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
