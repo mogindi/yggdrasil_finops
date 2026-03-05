@@ -1,9 +1,11 @@
+import io
 import json
 import threading
 import unittest
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 import app
 from cloudkitty_client import ProjectNotFoundError
@@ -79,6 +81,32 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         debug_messages = [call.args[0] for call in debug_mock.call_args_list]
         self.assertTrue(any("OpenSearch API call" in msg for msg in debug_messages))
         self.assertTrue(any("OpenSearch API response" in msg for msg in debug_messages))
+
+
+    def test_extract_error_reason_from_root_cause(self):
+        reason = OpenSearchClient._extract_error_reason(json.dumps({"error": {"root_cause": [{"reason": "index missing"}]}}))
+        self.assertEqual(reason, "index missing")
+
+    def test_http_json_error_message_includes_method_url_and_reason(self):
+        with patch.dict("os.environ", {"OPENSEARCH_URL": "http://opensearch:9200", "OS_VERIFY": "false"}, clear=False):
+            client = OpenSearchClient(debug=True)
+
+        http_error = HTTPError(
+            url="http://opensearch:9200/payments-*/_search",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=io.BytesIO(b'{"error": {"reason": "query malformed"}}'),
+        )
+
+        with patch("urllib.request.urlopen", side_effect=http_error):
+            with self.assertRaises(OpenSearchApiError) as exc_ctx:
+                client._http_json("GET", "/payments-*/_search", {"query": {}})
+
+        message = str(exc_ctx.exception)
+        self.assertIn("method=GET", message)
+        self.assertIn("url=http://opensearch:9200/payments-*/_search", message)
+        self.assertIn("query malformed", message)
 
     def test_payments_template_uses_compatible_metadata_mapping(self):
         client = OpenSearchClient()

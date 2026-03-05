@@ -25,7 +25,7 @@ from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchEr
 from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 
-DEBUG_MODE = False
+DEBUG_MODE = env_flag_enabled("DEBUG", default=False)
 LOGGER = logging.getLogger("document_generator")
 
 
@@ -41,6 +41,27 @@ DOCUMENT_SERVICE = DocumentService()
 
 
 class DocumentGeneratorHandler(BaseHTTPRequestHandler):
+    def _log_opensearch_failure(self, exc: OpenSearchApiError | OpenSearchError, status: int) -> None:
+        if isinstance(exc, OpenSearchApiError):
+            body_preview = (exc.body or "")[:1000]
+            LOGGER.error(
+                "OpenSearch request failed while handling method=%s path=%s status=%s opensearch_status=%s opensearch_url=%s response_body=%s",
+                self.command,
+                self.path,
+                status,
+                exc.status_code,
+                exc.url,
+                body_preview,
+            )
+            return
+        LOGGER.error(
+            "OpenSearch connection failed while handling method=%s path=%s status=%s error=%s",
+            self.command,
+            self.path,
+            status,
+            str(exc),
+        )
+
     def _log_api_request(self):
         if self.path.startswith("/api/") or self.path == "/healthz":
             LOGGER.debug(
@@ -106,6 +127,7 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
         except BillingError as exc:
             return self._json({"error": str(exc)}, status=400)
         except (OpenSearchApiError, OpenSearchError) as exc:
+            self._log_opensearch_failure(exc, status=502)
             return self._json({"error": str(exc)}, status=502)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -115,6 +137,7 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
         try:
             return self._json(BILLING_SERVICE.create_invoice(project_id, req), status=201)
         except (OpenSearchApiError, OpenSearchError) as exc:
+            self._log_opensearch_failure(exc, status=502)
             return self._json({"error": str(exc)}, status=502)
 
     def _project_invoices_delete(self, project_id: str, invoice_id: str):
@@ -124,6 +147,8 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
         except InvoiceNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
         except (BillingError, OpenSearchApiError, OpenSearchError) as exc:
+            if isinstance(exc, (OpenSearchApiError, OpenSearchError)):
+                self._log_opensearch_failure(exc, status=400)
             return self._json({"error": str(exc)}, status=400)
 
     def _project_receipts_get(self, project_id: str, parts: list[str]):
@@ -236,6 +261,9 @@ def run() -> None:
     DEBUG_MODE = args.debug or env_flag_enabled("DEBUG", default=False)
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    global BILLING_SERVICE
+    BILLING_SERVICE = _build_billing_service()
 
     opensearch_url = os.environ.get("OPENSEARCH_URL", "").strip()
     if opensearch_url:
