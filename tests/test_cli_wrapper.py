@@ -141,6 +141,9 @@ class CliWrapperTests(unittest.TestCase):
         req = mocked.call_args.args[0]
         self.assertEqual(req.method, "PUT")
         self.assertTrue(req.full_url.endswith("/api/projects/proj_123/payments/events/evt_1"))
+        payload = json.loads(req.data.decode("utf-8"))
+        self.assertEqual(payload["direction"], "inbound")
+        self.assertNotIn("payment_direction", payload)
 
     def test_invoice_show_calls_expected_endpoint(self):
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"invoice_id": "inv_1"})) as mocked:
