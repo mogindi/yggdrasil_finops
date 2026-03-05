@@ -1,10 +1,13 @@
 import json
+import os
 import threading
 import unittest
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 
 import document_generator_app
+
+os.environ.setdefault("CLOUDKITTY_CURRENCY", "USD")
 
 
 class DocumentGeneratorLogoRequirementTests(unittest.TestCase):
@@ -30,6 +33,27 @@ class DocumentGeneratorLogoRequirementTests(unittest.TestCase):
         status, body = self._request("GET", "/api/projects/proj-1/invoices/inv_1/file")
         self.assertEqual(status, 400)
         self.assertIn("logo_path", body["error"])
+
+    def test_delete_invoice_endpoint(self):
+        status, created = self._request(
+            "POST",
+            "/api/projects/proj-1/invoices",
+            body={
+                "amount_due": 10.0,
+                "currency": "USD",
+                "customer_name": "A",
+                "customer_email": "a@example.com",
+            },
+        )
+        self.assertEqual(status, 201)
+
+        status, deleted = self._request("DELETE", f"/api/projects/proj-1/invoices/{created['invoice_id']}")
+        self.assertEqual(status, 200)
+        self.assertTrue(deleted["deleted"])
+
+        status, body = self._request("GET", f"/api/projects/proj-1/invoices/{created['invoice_id']}")
+        self.assertEqual(status, 404)
+        self.assertIn("does not exist", body["error"])
 
 
 if __name__ == "__main__":

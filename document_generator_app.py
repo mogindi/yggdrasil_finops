@@ -8,15 +8,35 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from billing_service import BillingError, BillingService, InMemoryBillingRepository, InvoiceCreateRequest, InvoiceNotFoundError, ReceiptCreateRequest, ReceiptNotFoundError
+from billing_service import (
+    BillingError,
+    BillingService,
+    InMemoryBillingRepository,
+    InvoiceCreateRequest,
+    InvoiceNotFoundError,
+    OpenSearchBillingRepository,
+    ReceiptCreateRequest,
+    ReceiptNotFoundError,
+)
 from brevo_client import BrevoClient, BrevoError
 from document_service import DocumentError, DocumentService
 from currency import get_default_currency
-from startup_validation import env_flag_enabled
+from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
+from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
-BILLING_SERVICE = BillingService(InMemoryBillingRepository())
-DOCUMENT_SERVICE = DocumentService()
+
 DEBUG_MODE = False
+
+
+def _build_billing_service() -> BillingService:
+    opensearch_url = os.environ.get("OPENSEARCH_URL", "").strip()
+    if opensearch_url:
+        return BillingService(OpenSearchBillingRepository(OpenSearchClient(debug=DEBUG_MODE)))
+    return BillingService(InMemoryBillingRepository())
+
+
+BILLING_SERVICE = _build_billing_service()
+DOCUMENT_SERVICE = DocumentService()
 
 
 class DocumentGeneratorHandler(BaseHTTPRequestHandler):
@@ -43,6 +63,12 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
                 return self._project_receipts_post(project_id)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
+    def do_DELETE(self):
+        parts = urlparse(self.path).path.split("/")
+        if len(parts) == 6 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
+            return self._project_invoices_delete(parts[3], parts[5])
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         return json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
@@ -66,12 +92,26 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
             return self._json({"error": str(exc)}, status=404)
         except BillingError as exc:
             return self._json({"error": str(exc)}, status=400)
+        except (OpenSearchApiError, OpenSearchError) as exc:
+            return self._json({"error": str(exc)}, status=502)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def _project_invoices_post(self, project_id: str):
         body = self._read_json_body()
         req = InvoiceCreateRequest(float(body.get("amount_due", 0)), body.get("currency", get_default_currency()), body.get("customer_name", ""), body.get("customer_email", ""), body.get("due_at"), body.get("description", ""))
-        return self._json(BILLING_SERVICE.create_invoice(project_id, req), status=201)
+        try:
+            return self._json(BILLING_SERVICE.create_invoice(project_id, req), status=201)
+        except (OpenSearchApiError, OpenSearchError) as exc:
+            return self._json({"error": str(exc)}, status=502)
+
+    def _project_invoices_delete(self, project_id: str, invoice_id: str):
+        try:
+            BILLING_SERVICE.delete_invoice(project_id, invoice_id)
+            return self._json({"deleted": True, "invoice_id": invoice_id})
+        except InvoiceNotFoundError as exc:
+            return self._json({"error": str(exc)}, status=404)
+        except (BillingError, OpenSearchApiError, OpenSearchError) as exc:
+            return self._json({"error": str(exc)}, status=400)
 
     def _project_receipts_get(self, project_id: str, parts: list[str]):
         try:
@@ -158,6 +198,16 @@ def run() -> None:
     DEBUG_MODE = args.debug or env_flag_enabled("DEBUG", default=False)
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    opensearch_url = os.environ.get("OPENSEARCH_URL", "").strip()
+    if opensearch_url:
+        value, using_default = describe_env("OPENSEARCH_URL")
+        print_env_resolution("OPENSEARCH_URL", value, using_default)
+        validate_http_endpoint("OPENSEARCH_URL", value, health_path="/")
+
+        os_verify, os_verify_defaulted = describe_env("OS_VERIFY")
+        print_env_resolution("OS_VERIFY", os_verify, os_verify_defaulted)
+
     ThreadingHTTPServer(("0.0.0.0", args.port), DocumentGeneratorHandler).serve_forever()
 
 
