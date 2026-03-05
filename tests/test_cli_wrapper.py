@@ -1,5 +1,6 @@
 import json
 import os
+import io
 import importlib.util
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -42,6 +43,27 @@ class FakeResponse:
 
 
 class CliWrapperTests(unittest.TestCase):
+    def test_root_help_lists_only_command_paths(self):
+        with patch("sys.stdout", new=io.StringIO()) as output:
+            rc = yggdrasil_finops.main(["--help"])
+
+        self.assertEqual(rc, 0)
+        text = output.getvalue()
+        self.assertIn("Available commands:", text)
+        self.assertIn("yggdrasil_finops receipt create", text)
+        self.assertIn("yggdrasil_finops receipt list", text)
+        self.assertNotIn("--project-id", text)
+
+    def test_subcommand_help_still_shows_options(self):
+        with patch("sys.stdout", new=io.StringIO()) as output:
+            with self.assertRaises(SystemExit) as exc:
+                yggdrasil_finops.main(["receipt", "create", "-h"])
+
+        self.assertEqual(exc.exception.code, 0)
+        text = output.getvalue()
+        self.assertIn("--project-id PROJECT_ID", text)
+        self.assertIn("--invoice-id INVOICE_ID", text)
+
     def test_cost_monthly_calls_expected_endpoint(self):
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"series": []})) as mocked:
             rc = yggdrasil_finops.main([

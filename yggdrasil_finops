@@ -214,21 +214,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _format_full_help(parser: argparse.ArgumentParser) -> str:
-    sections: list[str] = [parser.format_help().rstrip()]
+def _iter_resource_commands(parser: argparse.ArgumentParser) -> list[str]:
+    commands: list[str] = []
     for action in parser._actions:
         if not isinstance(action, _SubParsersAction):
             continue
         for resource_name, resource_parser in action.choices.items():
-            sections.append(f"\n## {resource_name} commands\n")
-            sections.append(resource_parser.format_help().rstrip())
             for nested_action in resource_parser._actions:
                 if not isinstance(nested_action, _SubParsersAction):
                     continue
-                for command_name, command_parser in nested_action.choices.items():
-                    sections.append(f"\n### {resource_name} {command_name}\n")
-                    sections.append(command_parser.format_help().rstrip())
-    return "\n".join(sections) + "\n"
+                for command_name in nested_action.choices:
+                    commands.append(f"{parser.prog} {resource_name} {command_name}")
+    return commands
+
+
+def _format_root_help(parser: argparse.ArgumentParser) -> str:
+    commands = _iter_resource_commands(parser)
+    lines = [
+        parser.description or "",
+        "",
+        "Available commands:",
+        *[f"  {command}" for command in commands],
+        "",
+        "Run `<command> -h` to see options for a specific command.",
+    ]
+    return "\n".join(lines).strip() + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -236,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--debug", action="store_true", help="Enable debug logging for all CLI API calls")
     cli_args = list(sys.argv[1:] if argv is None else argv)
     if cli_args in (["--help"], ["-h"]):
-        print(_format_full_help(parser), end="")
+        print(_format_root_help(parser), end="")
         return 0
     args = parser.parse_args(cli_args)
 
