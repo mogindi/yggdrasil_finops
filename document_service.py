@@ -1,5 +1,7 @@
 import base64
 import html
+import struct
+import zlib
 from pathlib import Path
 
 from currency import get_default_currency
@@ -40,19 +42,81 @@ def _jpeg_size(data: bytes) -> tuple[int, int]:
     raise DocumentError("Unable to parse JPEG logo")
 
 
+def _png_to_pdf_image(data: bytes) -> tuple[int, int, bytes, bytes]:
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise DocumentError("Unsupported logo format. Only JPEG and PNG are supported")
+
+    idx = 8
+    width = height = 0
+    bit_depth = 0
+    color_type = 0
+    interlace = 0
+    idat_parts: list[bytes] = []
+
+    while idx + 8 <= len(data):
+        chunk_len = struct.unpack(">I", data[idx : idx + 4])[0]
+        chunk_type = data[idx + 4 : idx + 8]
+        chunk_data_start = idx + 8
+        chunk_data_end = chunk_data_start + chunk_len
+        if chunk_data_end + 4 > len(data):
+            break
+        chunk_data = data[chunk_data_start:chunk_data_end]
+        idx = chunk_data_end + 4
+
+        if chunk_type == b"IHDR":
+            if chunk_len != 13:
+                raise DocumentError("Invalid PNG logo")
+            width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", chunk_data)
+        elif chunk_type == b"IDAT":
+            idat_parts.append(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+
+    if not width or not height or not idat_parts:
+        raise DocumentError("Invalid PNG logo")
+    if bit_depth != 8:
+        raise DocumentError("PNG logos must use 8-bit channels")
+    if interlace != 0:
+        raise DocumentError("Interlaced PNG logos are not supported")
+
+    if color_type == 2:
+        channels = 3
+        color_space = b"/DeviceRGB"
+    elif color_type == 0:
+        channels = 1
+        color_space = b"/DeviceGray"
+    else:
+        raise DocumentError("PNG logos must be RGB or grayscale (no alpha/palette)")
+
+    return (
+        width,
+        height,
+        b"".join(idat_parts),
+        b"/ColorSpace "
+        + color_space
+        + f" /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors {channels} /BitsPerComponent 8 /Columns {width} >>".encode(
+            "latin-1"
+        ),
+    )
+
+
 class DocumentService:
-    def _load_logo(self, logo_path: str | None) -> tuple[bytes | None, int, int]:
+    def _load_logo(self, logo_path: str | None) -> tuple[bytes | None, int, int, bytes | None]:
         if not logo_path:
-            return None, 0, 0
+            return None, 0, 0, None
         path = Path(logo_path)
         if not path.exists() or not path.is_file():
             raise DocumentError(f"Logo file not found: {logo_path}")
         data = path.read_bytes()
-        width, height = _jpeg_size(data)
-        return data, width, height
+        if data.startswith(b"\xff\xd8"):
+            width, height = _jpeg_size(data)
+            image_dict = b"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode"
+            return data, width, height, image_dict
+        width, height, png_stream, image_dict = _png_to_pdf_image(data)
+        return png_stream, width, height, image_dict
 
     def _build_pdf(self, title: str, lines: list[str], logo_path: str | None = None) -> bytes:
-        logo_data, logo_width, logo_height = self._load_logo(logo_path)
+        logo_data, logo_width, logo_height, logo_image_dict = self._load_logo(logo_path)
         objects: list[bytes] = []
 
         y = 780
@@ -71,7 +135,9 @@ class DocumentService:
         objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")  # 1
         if logo_data:
             objects.append(
-                f"<< /Type /XObject /Subtype /Image /Width {logo_width} /Height {logo_height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {len(logo_data)} >>\nstream\n".encode("latin-1")
+                f"<< /Type /XObject /Subtype /Image /Width {logo_width} /Height {logo_height} /Length {len(logo_data)} ".encode("latin-1")
+                + (logo_image_dict or b"")
+                + b" >>\nstream\n"
                 + logo_data
                 + b"\nendstream"
             )  # 2
