@@ -44,6 +44,8 @@ services:
       network: host
     command: ["python", "document_generator_app.py", "--port", "8084"]
     network_mode: host
+    volumes:
+      - ./volumes/document_generator:/volumes/document_generator
     environment:
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
