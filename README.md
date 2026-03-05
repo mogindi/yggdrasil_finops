@@ -329,6 +329,9 @@ PDF commands in CLI:
 # generate + download invoice PDF
 python yggdrasil_finops invoice file   --project-id proj_123   --invoice-id inv_001   --logo-path ./logo.jpg   --download-path ./inv_001.pdf
 
+# without --download-path, CLI prints JSON metadata + preview hex only (PDF is not written to disk)
+python yggdrasil_finops invoice file --project-id proj_123 --invoice-id inv_001 --logo-path ./logo.jpg
+
 # show invoice PDF as HTML (for browser rendering)
 python yggdrasil_finops invoice file --project-id proj_123 --invoice-id inv_001 --html
 

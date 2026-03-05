@@ -216,6 +216,24 @@ class CliWrapperTests(unittest.TestCase):
         self.assertIn("/api/projects/proj_123/invoices/inv_1/file", req.full_url)
         open_mock.assert_called_once_with("./inv_1.pdf", "wb")
 
+    def test_invoice_file_without_download_path_is_not_written(self):
+        with patch("urllib.request.urlopen", return_value=FakeResponse(raw_body=b"%PDF-1.4 mock", headers={"Content-Type": "application/pdf"})), patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            rc = yggdrasil_finops.main([
+                "invoice",
+                "file",
+                "--project-id",
+                "proj_123",
+                "--invoice-id",
+                "inv_1",
+                "--logo-path",
+                "./logo.jpg",
+            ])
+
+        self.assertEqual(rc, 0)
+        body = json.loads(stdout.getvalue())
+        self.assertIsNone(body["saved_to"])
+        self.assertIn("--download-path", body["note"])
+
 
 if __name__ == "__main__":
     unittest.main()
