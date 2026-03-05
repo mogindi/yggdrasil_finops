@@ -43,6 +43,58 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 
 No external Python packages are required.
 
+## Testing
+
+### Run tests locally
+
+From the repository root, run:
+
+```bash
+PYTHONPATH=. pytest -q
+```
+
+Why `PYTHONPATH=.` is included: tests import modules directly from this repository (for example `app`, `currency`, `cloudkitty_client`), so adding the current directory to Python's import path makes test discovery work consistently.
+
+Run a single test file while iterating:
+
+```bash
+PYTHONPATH=. pytest -q tests/test_currency.py
+```
+
+Run a specific test case:
+
+```bash
+PYTHONPATH=. pytest -q tests/test_currency.py::CurrencyTests::test_defaults_to_dkk
+```
+
+### How to write new tests (beginner-friendly)
+
+If you are new to testing, use this simple workflow:
+
+1. **Pick one behavior** to verify (for example: "returns 400 on bad input").
+2. **Create or update one test file** in `tests/`.
+   - Name files like `test_<feature>.py`.
+   - Name tests like `test_<expected_behavior>`.
+3. **Arrange / Act / Assert** in the test body:
+   - Arrange: set up input data, mocks, or fixtures.
+   - Act: call the function or endpoint.
+   - Assert: check status codes, payload fields, and side effects.
+4. **Run only your test first** to get fast feedback.
+5. **Run the broader suite** before opening a PR.
+
+Minimal example:
+
+```python
+def test_get_default_currency_returns_dkk_when_env_missing(monkeypatch):
+    monkeypatch.delenv("CLOUDKITTY_CURRENCY", raising=False)
+    assert get_default_currency() == "DKK"
+```
+
+Tips:
+- Keep tests deterministic (no real network calls unless explicitly needed).
+- Prefer small focused tests over very large end-to-end tests.
+- When testing HTTP handlers, assert both status code and response JSON shape.
+
 ## Required environment variables
 
 The services print a startup summary showing each relevant variable, whether it came from the environment or a default, and then run early dependency checks.
