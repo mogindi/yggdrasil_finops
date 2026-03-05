@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import http.client
 import logging
 import json
 import os
@@ -78,8 +79,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
-        except error.URLError as exc:
-            self._json({"error": f"upstream unavailable: {exc.reason}"}, status=502)
+        except (error.URLError, http.client.RemoteDisconnected, ConnectionResetError, TimeoutError) as exc:
+            reason = getattr(exc, "reason", str(exc))
+            self._json({"error": f"upstream unavailable: {reason}"}, status=502)
 
     def _json(self, payload: dict, status: int = 200):
         body = json.dumps(payload).encode("utf-8")
