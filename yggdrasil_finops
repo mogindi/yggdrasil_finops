@@ -84,9 +84,14 @@ def _print_response(resp: ApiResponse) -> int:
 
 
 def _add_base_and_project_args(parser: argparse.ArgumentParser, *, require_project: bool = True) -> None:
-    parser.add_argument("--api-url", default=DEFAULT_BASE_URL, help="Base API URL (default: %(default)s)")
+    parser.add_argument(
+        "--api-url",
+        default=DEFAULT_BASE_URL,
+        metavar="URL",
+        help="Base API URL, e.g. http://localhost:8082 (default: %(default)s)",
+    )
     if require_project:
-        parser.add_argument("--project-id", required=True, help="Project identifier")
+        parser.add_argument("--project-id", required=True, metavar="PROJECT_ID", help="Project identifier, e.g. proj_123")
 
 
 def _safe_default_currency() -> str:
@@ -113,20 +118,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     cost_aggregate = cost_sub.add_parser("aggregate", help="Fetch aggregate project costs")
     _add_base_and_project_args(cost_aggregate)
-    cost_aggregate.add_argument("--start", help="ISO8601 start datetime")
-    cost_aggregate.add_argument("--end", help="ISO8601 end datetime")
-    cost_aggregate.add_argument("--resolution", default="month", help="Grouping resolution: hour/day/week/month")
+    cost_aggregate.add_argument("--start", metavar="DATETIME", help="ISO8601 start datetime, e.g. 2026-01-01T00:00:00Z")
+    cost_aggregate.add_argument("--end", metavar="DATETIME", help="ISO8601 end datetime, e.g. 2026-01-31T23:59:59Z")
+    cost_aggregate.add_argument("--resolution", default="month", help="Grouping resolution: hour/day/week/month, e.g. day")
     cost_aggregate.add_argument("--include-series", action="store_true", help="Include time series points")
 
     cost_last_month = cost_sub.add_parser("last-month", help="Fetch previous calendar month costs")
     _add_base_and_project_args(cost_last_month)
-    cost_last_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month")
+    cost_last_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month, e.g. day")
     cost_last_month.add_argument("--include-series", action="store_true", help="Include time series points")
 
     cost_month = cost_sub.add_parser("month", help="Fetch one specific calendar month costs")
     _add_base_and_project_args(cost_month)
-    cost_month.add_argument("--month", required=True, help="Month in YYYY-MM format")
-    cost_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month")
+    cost_month.add_argument("--month", required=True, metavar="YYYY-MM", help="Month in YYYY-MM format, e.g. 2026-01")
+    cost_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month, e.g. day")
     cost_month.add_argument("--include-series", action="store_true", help="Include time series points")
 
     cost_monthly = cost_sub.add_parser("monthly", help="Fetch monthly history (excluding current month)")
@@ -140,76 +145,76 @@ def build_parser() -> argparse.ArgumentParser:
 
     payment_create = payment_sub.add_parser("create", help="Create or upsert a payment event")
     _add_base_and_project_args(payment_create)
-    payment_create.add_argument("--event-id", required=True)
-    payment_create.add_argument("--invoice-id", required=True)
-    payment_create.add_argument("--amount", required=True, type=float)
-    payment_create.add_argument("--currency", default=_safe_default_currency())
-    payment_create.add_argument("--status", default="captured")
-    payment_create.add_argument("--payment-direction", default="inbound")
-    payment_create.add_argument("--paid-at", required=True, help="ISO8601 datetime")
-    payment_create.add_argument("--provider", default="manual")
-    payment_create.add_argument("--method", default="bank_transfer")
-    payment_create.add_argument("--reference", default="")
+    payment_create.add_argument("--event-id", required=True, metavar="EVENT_ID", help="Payment event ID, e.g. evt_1")
+    payment_create.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
+    payment_create.add_argument("--amount", required=True, type=float, metavar="AMOUNT", help="Payment amount, e.g. 10.50")
+    payment_create.add_argument("--currency", default=_safe_default_currency(), metavar="CURRENCY", help="Currency code, e.g. USD")
+    payment_create.add_argument("--status", default="captured", metavar="STATUS", help="Payment status, e.g. captured")
+    payment_create.add_argument("--payment-direction", default="inbound", metavar="DIRECTION", help="Payment direction, e.g. inbound")
+    payment_create.add_argument("--paid-at", required=True, metavar="DATETIME", help="ISO8601 datetime, e.g. 2026-01-01T00:00:00Z")
+    payment_create.add_argument("--provider", default="manual", metavar="PROVIDER", help="Provider name, e.g. stripe")
+    payment_create.add_argument("--method", default="bank_transfer", metavar="METHOD", help="Payment method, e.g. card")
+    payment_create.add_argument("--reference", default="", metavar="REFERENCE", help="Optional payment reference, e.g. TXN-1001")
 
     payment_list = payment_sub.add_parser("list", help="List payment events")
     _add_base_and_project_args(payment_list)
-    payment_list.add_argument("--size", type=int, default=25)
+    payment_list.add_argument("--size", type=int, default=25, metavar="N", help="Number of events to return, e.g. 25")
 
     payment_show = payment_sub.add_parser("show", help="Show one payment event")
     _add_base_and_project_args(payment_show)
-    payment_show.add_argument("--event-id", required=True)
+    payment_show.add_argument("--event-id", required=True, metavar="EVENT_ID", help="Payment event ID, e.g. evt_1")
 
     invoice_parser = subparsers.add_parser("invoice", help="Invoice actions")
     invoice_sub = invoice_parser.add_subparsers(dest="action", required=True)
 
     invoice_create = invoice_sub.add_parser("create", help="Create an invoice")
     _add_base_and_project_args(invoice_create)
-    invoice_create.add_argument("--amount-due", required=True, type=float)
-    invoice_create.add_argument("--currency", default=_safe_default_currency())
-    invoice_create.add_argument("--customer-name", required=True)
-    invoice_create.add_argument("--customer-email", required=True)
-    invoice_create.add_argument("--due-at", required=True)
-    invoice_create.add_argument("--description", default="")
+    invoice_create.add_argument("--amount-due", required=True, type=float, metavar="AMOUNT", help="Invoice amount, e.g. 250.00")
+    invoice_create.add_argument("--currency", default=_safe_default_currency(), metavar="CURRENCY", help="Currency code, e.g. USD")
+    invoice_create.add_argument("--customer-name", required=True, metavar="NAME", help="Customer name, e.g. Jane Doe")
+    invoice_create.add_argument("--customer-email", required=True, metavar="EMAIL", help="Customer email, e.g. billing@example.com")
+    invoice_create.add_argument("--due-at", required=True, metavar="DATE", help="Due date (YYYY-MM-DD), e.g. 2026-01-31")
+    invoice_create.add_argument("--description", default="", metavar="TEXT", help="Optional line-item description")
 
     invoice_list = invoice_sub.add_parser("list", help="List invoices")
     _add_base_and_project_args(invoice_list)
 
     invoice_show = invoice_sub.add_parser("show", help="Show one invoice")
     _add_base_and_project_args(invoice_show)
-    invoice_show.add_argument("--invoice-id", required=True)
+    invoice_show.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
 
     invoice_file = invoice_sub.add_parser("file", help="Generate/view/send invoice PDF")
     _add_base_and_project_args(invoice_file)
-    invoice_file.add_argument("--invoice-id", required=True)
-    invoice_file.add_argument("--logo-path", required=True)
-    invoice_file.add_argument("--download-path", help="Save PDF to local path")
+    invoice_file.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
+    invoice_file.add_argument("--logo-path", required=True, metavar="PATH", help="Path to logo image, e.g. ./logo.jpg")
+    invoice_file.add_argument("--download-path", metavar="PATH", help="Save PDF to local path, e.g. ./invoice.pdf")
     invoice_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
     invoice_file.add_argument("--send-email", action="store_true", help="Send PDF using Brevo API")
-    invoice_file.add_argument("--email", help="Override recipient email")
+    invoice_file.add_argument("--email", metavar="EMAIL", help="Override recipient email, e.g. finance@example.com")
 
     receipt_parser = subparsers.add_parser("receipt", help="Receipt actions")
     receipt_sub = receipt_parser.add_subparsers(dest="action", required=True)
 
     receipt_create = receipt_sub.add_parser("create", help="Create a receipt")
     _add_base_and_project_args(receipt_create)
-    receipt_create.add_argument("--invoice-id", required=True)
-    receipt_create.add_argument("--amount-paid", required=True, type=float)
-    receipt_create.add_argument("--currency", default=_safe_default_currency())
-    receipt_create.add_argument("--paid-at", required=True)
-    receipt_create.add_argument("--payment-method", default="unknown")
-    receipt_create.add_argument("--payment-reference", default="")
+    receipt_create.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
+    receipt_create.add_argument("--amount-paid", required=True, type=float, metavar="AMOUNT", help="Amount paid, e.g. 250.00")
+    receipt_create.add_argument("--currency", default=_safe_default_currency(), metavar="CURRENCY", help="Currency code, e.g. USD")
+    receipt_create.add_argument("--paid-at", required=True, metavar="DATETIME", help="ISO8601 datetime, e.g. 2026-01-01T00:00:00Z")
+    receipt_create.add_argument("--payment-method", default="unknown", metavar="METHOD", help="Payment method, e.g. bank_transfer")
+    receipt_create.add_argument("--payment-reference", default="", metavar="REFERENCE", help="Optional payment reference, e.g. TXN-1001")
 
     receipt_list = receipt_sub.add_parser("list", help="List receipts")
     _add_base_and_project_args(receipt_list)
 
     receipt_file = receipt_sub.add_parser("file", help="Generate/view/send receipt PDF")
     _add_base_and_project_args(receipt_file)
-    receipt_file.add_argument("--receipt-id", required=True)
-    receipt_file.add_argument("--logo-path", required=True)
-    receipt_file.add_argument("--download-path", help="Save PDF to local path")
+    receipt_file.add_argument("--receipt-id", required=True, metavar="RECEIPT_ID", help="Receipt ID, e.g. rcpt_1")
+    receipt_file.add_argument("--logo-path", required=True, metavar="PATH", help="Path to logo image, e.g. ./logo.jpg")
+    receipt_file.add_argument("--download-path", metavar="PATH", help="Save PDF to local path, e.g. ./receipt.pdf")
     receipt_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
     receipt_file.add_argument("--send-email", action="store_true", help="Send PDF using Brevo API")
-    receipt_file.add_argument("--email", help="Override recipient email")
+    receipt_file.add_argument("--email", metavar="EMAIL", help="Override recipient email, e.g. finance@example.com")
 
     return parser
 
