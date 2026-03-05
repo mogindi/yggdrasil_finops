@@ -34,7 +34,7 @@ class RevolutBusinessClient:
             self._logger.debug(message)
 
     @staticmethod
-    def _to_minor_units(amount: float) -> int:
+    def to_minor_units(amount: float) -> int:
         decimal_amount = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         return int(decimal_amount * 100)
 
@@ -49,6 +49,7 @@ class RevolutBusinessClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "Revolut-Api-Version": "2025-12-04",
         }
         req = request.Request(url, method=method, data=data, headers=headers)
         try:
@@ -64,15 +65,9 @@ class RevolutBusinessClient:
             self._debug(f"Revolut connection error: method={method} url={url} reason={exc.reason}")
             raise RevolutError(f"Failed to connect to Revolut Business API at {self.endpoint}: {exc.reason}") from exc
 
-    def create_order(self, *, order_id: str, amount: float, currency: str, description: str, customer_email: str, success_url: str | None, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def create_order(self, *, amount_minor: int, currency: str) -> dict[str, Any]:
         body: dict[str, Any] = {
-            "amount": self._to_minor_units(amount),
+            "amount": int(amount_minor),
             "currency": currency,
-            "merchant_order_ext_ref": order_id,
-            "description": description,
-            "customer": {"email": customer_email} if customer_email else {},
-            "metadata": metadata or {},
         }
-        if success_url:
-            body["redirect_url"] = success_url
         return self._http_json("POST", self.orders_path, body)
