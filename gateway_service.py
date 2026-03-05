@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error, request
 from urllib.parse import urlparse
 
-from startup_validation import describe_env, print_env_resolution, validate_http_endpoint
+from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 
 COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL")
@@ -98,7 +98,8 @@ def run() -> None:
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
-    if args.debug:
+    debug_mode = args.debug or env_flag_enabled("DEBUG", default=False)
+    if debug_mode:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     for var_name, health_path in [

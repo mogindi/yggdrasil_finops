@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from currency import get_default_currency
-from startup_validation import describe_env, print_env_resolution
+from startup_validation import describe_env, env_flag_enabled, print_env_resolution
 
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
@@ -178,7 +178,7 @@ def run() -> None:
     args = parser.parse_args()
 
     global DEBUG_MODE
-    DEBUG_MODE = args.debug
+    DEBUG_MODE = args.debug or env_flag_enabled("DEBUG", default=False)
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 

@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
 from currency import get_default_currency
-from startup_validation import describe_env, print_env_resolution, validate_http_endpoint
+from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 
 DEBUG_MODE = False
@@ -117,7 +117,7 @@ def run() -> None:
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
     global DEBUG_MODE
-    DEBUG_MODE = args.debug
+    DEBUG_MODE = args.debug or env_flag_enabled("DEBUG", default=False)
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 

@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 from revolut_client import RevolutApiError, RevolutBusinessClient, RevolutError
 from currency import get_default_currency
-from startup_validation import StartupValidationError, describe_env, ensure_http_url, print_env_resolution, validate_http_endpoint
+from startup_validation import StartupValidationError, describe_env, ensure_http_url, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL")
 
@@ -101,7 +101,7 @@ def run() -> None:
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
     global DEBUG_MODE
-    DEBUG_MODE = args.debug
+    DEBUG_MODE = args.debug or env_flag_enabled("DEBUG", default=False)
     if DEBUG_MODE:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
