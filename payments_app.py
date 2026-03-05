@@ -97,7 +97,17 @@ class PaymentsHandler(BaseHTTPRequestHandler):
                 return self._json(client.upsert_payment_event(partition, parts[6], body), status=201)
             if len(parts) == 6 and parts[5] == "balance":
                 body = self._read_json_body()
-                return self._json(client.upsert_balance(project_id, body.get("currency", get_default_currency()), float(body.get("paid_total", 0)), float(body.get("due_total", 0))), status=201)
+                costs_total = float(body.get("costs_total", body.get("due_total", 0)))
+                payments_total = float(body.get("payments_total", body.get("paid_total", 0)))
+                return self._json(
+                    client.upsert_balance(
+                        project_id,
+                        body.get("currency", get_default_currency()),
+                        costs_total,
+                        payments_total,
+                    ),
+                    status=201,
+                )
         except (OpenSearchApiError, OpenSearchError) as exc:
             return self._json({"error": str(exc), "opensearch_url": client.endpoint}, status=502)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")

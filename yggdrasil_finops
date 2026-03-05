@@ -159,6 +159,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_base_and_project_args(payment_show)
     payment_show.add_argument("--event-id", required=True)
 
+    payment_balance_get = payment_sub.add_parser("balance", help="Get project payment balance")
+    _add_base_and_project_args(payment_balance_get)
+
+    payment_balance_set = payment_sub.add_parser("set-balance", help="Set project payment balance from costs and payments totals")
+    _add_base_and_project_args(payment_balance_set)
+    payment_balance_set.add_argument("--currency", default=_safe_default_currency())
+    payment_balance_set.add_argument("--costs-total", required=True, type=float)
+    payment_balance_set.add_argument("--payments-total", required=True, type=float)
+
     invoice_parser = subparsers.add_parser("invoice", help="Invoice actions")
     invoice_sub = invoice_parser.add_subparsers(dest="action", required=True)
 
@@ -308,6 +317,15 @@ def main(argv: list[str] | None = None) -> int:
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments?size={args.size}"))
     if args.resource == "payment" and args.action == "show":
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments/events/{args.event_id}"))
+    if args.resource == "payment" and args.action == "balance":
+        return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments/balance"))
+    if args.resource == "payment" and args.action == "set-balance":
+        payload = {
+            "currency": args.currency,
+            "costs_total": args.costs_total,
+            "payments_total": args.payments_total,
+        }
+        return _print_response(client.request_json("PUT", f"/api/projects/{args.project_id}/payments/balance", payload))
 
     if args.resource == "invoice" and args.action == "create":
         payload = {
