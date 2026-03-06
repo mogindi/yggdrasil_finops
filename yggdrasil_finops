@@ -87,15 +87,15 @@ def _print_response(resp: ApiResponse) -> int:
     return 0 if 200 <= resp.status < 300 else 1
 
 
-def _add_base_and_project_args(parser: argparse.ArgumentParser, *, require_project: bool = True) -> None:
+def _add_base_and_customer_args(parser: argparse.ArgumentParser, *, require_customer: bool = True) -> None:
     parser.add_argument(
         "--api-url",
         default=DEFAULT_BASE_URL,
         metavar="URL",
         help="Base API URL, e.g. http://localhost:8082 (default: %(default)s)",
     )
-    if require_project:
-        parser.add_argument("--project-id", required=True, metavar="PROJECT_ID", help="Project identifier, e.g. proj_123")
+    if require_customer:
+        parser.add_argument("--customer-id", required=True, metavar="CUSTOMER_ID", help="Customer identifier, e.g. proj_123")
 
 
 
@@ -106,43 +106,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="resource", required=True)
 
-    project_parser = subparsers.add_parser("project", help="Project level actions")
-    project_sub = project_parser.add_subparsers(dest="action", required=True)
-    project_setup = project_sub.add_parser("setup", help="Setup payment indices for a project")
-    _add_base_and_project_args(project_setup)
+    customer_parser = subparsers.add_parser("customer", help="Project level actions")
+    customer_sub = customer_parser.add_subparsers(dest="action", required=True)
+    customer_setup = customer_sub.add_parser("setup", help="Setup payment indices for a customer")
+    _add_base_and_customer_args(customer_setup)
+
+    customer_projects = customer_sub.add_parser("projects", help="List projects mapped to a customer")
+    _add_base_and_customer_args(customer_projects)
+
+    customer_add_project = customer_sub.add_parser("add-project", help="Add project to customer")
+    _add_base_and_customer_args(customer_add_project)
+    customer_add_project.add_argument("--project-id", required=True, metavar="PROJECT_ID")
+
+    customer_remove_project = customer_sub.add_parser("remove-project", help="Remove project from customer")
+    _add_base_and_customer_args(customer_remove_project)
+    customer_remove_project.add_argument("--project-id", required=True, metavar="PROJECT_ID")
 
     cost_parser = subparsers.add_parser("cost", help="Cost and usage actions")
     cost_sub = cost_parser.add_subparsers(dest="action", required=True)
 
-    cost_aggregate = cost_sub.add_parser("aggregate", help="Fetch aggregate project costs")
-    _add_base_and_project_args(cost_aggregate)
+    cost_aggregate = cost_sub.add_parser("aggregate", help="Fetch aggregate customer costs")
+    _add_base_and_customer_args(cost_aggregate)
     cost_aggregate.add_argument("--start", metavar="DATETIME", help="ISO8601 start datetime, e.g. 2026-01-01T00:00:00Z")
     cost_aggregate.add_argument("--end", metavar="DATETIME", help="ISO8601 end datetime, e.g. 2026-01-31T23:59:59Z")
     cost_aggregate.add_argument("--resolution", default="month", help="Grouping resolution: hour/day/week/month, e.g. day")
     cost_aggregate.add_argument("--include-series", action="store_true", help="Include time series points")
 
     cost_last_month = cost_sub.add_parser("last-month", help="Fetch previous calendar month costs")
-    _add_base_and_project_args(cost_last_month)
+    _add_base_and_customer_args(cost_last_month)
     cost_last_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month, e.g. day")
     cost_last_month.add_argument("--include-series", action="store_true", help="Include time series points")
 
     cost_month = cost_sub.add_parser("month", help="Fetch one specific calendar month costs")
-    _add_base_and_project_args(cost_month)
+    _add_base_and_customer_args(cost_month)
     cost_month.add_argument("--month", required=True, metavar="YYYY-MM", help="Month in YYYY-MM format, e.g. 2026-01")
     cost_month.add_argument("--resolution", default="day", help="Grouping resolution: hour/day/week/month, e.g. day")
     cost_month.add_argument("--include-series", action="store_true", help="Include time series points")
 
     cost_monthly = cost_sub.add_parser("monthly", help="Fetch monthly history (excluding current month)")
-    _add_base_and_project_args(cost_monthly)
+    _add_base_and_customer_args(cost_monthly)
 
     cost_monthly_graph = cost_sub.add_parser("monthly-graph", help="Render monthly usage graph HTML")
-    _add_base_and_project_args(cost_monthly_graph)
+    _add_base_and_customer_args(cost_monthly_graph)
 
     payment_parser = subparsers.add_parser("payment", help="Payment actions")
     payment_sub = payment_parser.add_subparsers(dest="action", required=True)
 
     payment_create = payment_sub.add_parser("create", help="Create or upsert a payment event")
-    _add_base_and_project_args(payment_create)
+    _add_base_and_customer_args(payment_create)
     payment_create.add_argument("--event-id", required=True, metavar="EVENT_ID", help="Payment event ID, e.g. evt_1")
     payment_create.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
     payment_create.add_argument("--amount", required=True, type=float, metavar="AMOUNT", help="Payment amount, e.g. 10.50")
@@ -155,23 +166,23 @@ def build_parser() -> argparse.ArgumentParser:
     payment_create.add_argument("--reference", default="", metavar="REFERENCE", help="Optional payment reference, e.g. TXN-1001")
 
     payment_list = payment_sub.add_parser("list", help="List payment events")
-    _add_base_and_project_args(payment_list)
+    _add_base_and_customer_args(payment_list)
     payment_list.add_argument("--size", type=int, default=25, metavar="N", help="Number of events to return, e.g. 25")
 
     payment_show = payment_sub.add_parser("show", help="Show one payment event")
-    _add_base_and_project_args(payment_show)
+    _add_base_and_customer_args(payment_show)
     payment_show.add_argument("--event-id", required=True, metavar="EVENT_ID", help="Payment event ID, e.g. evt_1")
 
-    payment_balance_get = payment_sub.add_parser("balance", help="Get project payment balance")
-    _add_base_and_project_args(payment_balance_get)
+    payment_balance_get = payment_sub.add_parser("balance", help="Get customer payment balance")
+    _add_base_and_customer_args(payment_balance_get)
     payment_balance_get.add_argument("--costs-from-date", metavar="DATE", help="Optional ISO8601 date or datetime for costs lower boundary, e.g. 2026-01-01")
     payment_balance_get.add_argument("--costs-to-date", metavar="DATE", help="Optional ISO8601 date or datetime for costs upper boundary, e.g. 2026-01-31")
     payment_balance_get.add_argument("--payments-from-date", metavar="DATE", help="Optional ISO8601 date or datetime for payments lower boundary, e.g. 2026-01-01")
     payment_balance_get.add_argument("--payments-to-date", metavar="DATE", help="Optional ISO8601 date or datetime for payments upper boundary, e.g. 2026-01-31")
     payment_balance_get.add_argument("--as-of-date", metavar="DATE", help="Deprecated alias for costs-to-date and payments-to-date")
 
-    payment_balance_set = payment_sub.add_parser("set-balance", help="Set project payment balance from costs and payments totals")
-    _add_base_and_project_args(payment_balance_set)
+    payment_balance_set = payment_sub.add_parser("set-balance", help="Set customer payment balance from costs and payments totals")
+    _add_base_and_customer_args(payment_balance_set)
     payment_balance_set.add_argument("--currency", default=_safe_default_currency())
     payment_balance_set.add_argument("--costs-total", required=True, type=float)
     payment_balance_set.add_argument("--payments-total", required=True, type=float)
@@ -180,7 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
     invoice_sub = invoice_parser.add_subparsers(dest="action", required=True)
 
     invoice_create = invoice_sub.add_parser("create", help="Create an invoice")
-    _add_base_and_project_args(invoice_create)
+    _add_base_and_customer_args(invoice_create)
     invoice_create.add_argument("--amount-due", required=True, type=float, metavar="AMOUNT", help="Invoice amount, e.g. 250.00")
     invoice_create.add_argument("--currency", metavar="CURRENCY", help="Currency code, e.g. DKK")
     invoice_create.add_argument("--customer-name", required=True, metavar="NAME", help="Customer name, e.g. Jane Doe")
@@ -189,14 +200,14 @@ def build_parser() -> argparse.ArgumentParser:
     invoice_create.add_argument("--description", default="", metavar="TEXT", help="Optional line-item description")
 
     invoice_list = invoice_sub.add_parser("list", help="List invoices")
-    _add_base_and_project_args(invoice_list)
+    _add_base_and_customer_args(invoice_list)
 
     invoice_show = invoice_sub.add_parser("show", help="Show one invoice")
-    _add_base_and_project_args(invoice_show)
+    _add_base_and_customer_args(invoice_show)
     invoice_show.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
 
     invoice_file = invoice_sub.add_parser("file", help="Generate/view/send invoice PDF")
-    _add_base_and_project_args(invoice_file)
+    _add_base_and_customer_args(invoice_file)
     invoice_file.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
     invoice_file.add_argument("--download-path", metavar="PATH", help="Save PDF to local path, e.g. ./invoice.pdf")
     invoice_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
@@ -207,7 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     receipt_sub = receipt_parser.add_subparsers(dest="action", required=True)
 
     receipt_create = receipt_sub.add_parser("create", help="Create a receipt")
-    _add_base_and_project_args(receipt_create)
+    _add_base_and_customer_args(receipt_create)
     receipt_create.add_argument("--invoice-id", required=True, metavar="INVOICE_ID", help="Invoice ID, e.g. inv_1")
     receipt_create.add_argument("--amount-paid", required=True, type=float, metavar="AMOUNT", help="Amount paid, e.g. 250.00")
     receipt_create.add_argument("--currency", metavar="CURRENCY", help="Currency code, e.g. DKK")
@@ -216,10 +227,10 @@ def build_parser() -> argparse.ArgumentParser:
     receipt_create.add_argument("--payment-reference", default="", metavar="REFERENCE", help="Optional payment reference, e.g. TXN-1001")
 
     receipt_list = receipt_sub.add_parser("list", help="List receipts")
-    _add_base_and_project_args(receipt_list)
+    _add_base_and_customer_args(receipt_list)
 
     receipt_file = receipt_sub.add_parser("file", help="Generate/view/send receipt PDF")
-    _add_base_and_project_args(receipt_file)
+    _add_base_and_customer_args(receipt_file)
     receipt_file.add_argument("--receipt-id", required=True, metavar="RECEIPT_ID", help="Receipt ID, e.g. rcpt_1")
     receipt_file.add_argument("--download-path", metavar="PATH", help="Save PDF to local path, e.g. ./receipt.pdf")
     receipt_file.add_argument("--html", action="store_true", help="Return HTML page with embedded PDF")
@@ -281,30 +292,36 @@ def main(argv: list[str] | None = None) -> int:
             if args.end:
                 params["end"] = args.end
             query = parse.urlencode(params)
-            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs?{query}"))
+            return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/costs?{query}"))
         if args.action == "last-month":
             params = {
                 "resolution": args.resolution,
                 "include_series": "true" if args.include_series else "false",
             }
             query = parse.urlencode(params)
-            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs/last-month?{query}"))
+            return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/costs/last-month?{query}"))
         if args.action == "month":
             params = {
                 "resolution": args.resolution,
                 "include_series": "true" if args.include_series else "false",
             }
             query = parse.urlencode(params)
-            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs/{args.month}?{query}"))
+            return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/costs/{args.month}?{query}"))
         if args.action == "monthly":
-            return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/costs/monthly"))
+            return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/costs/monthly"))
         if args.action == "monthly-graph":
-            status, body, _headers = client.request_raw("GET", f"/api/projects/{args.project_id}/costs/monthly/graph")
+            status, body, _headers = client.request_raw("GET", f"/api/customers/{args.customer_id}/costs/monthly/graph")
             print(body.decode("utf-8", errors="ignore"))
             return 0 if 200 <= status < 300 else 1
 
-    if args.resource == "project" and args.action == "setup":
-        return _print_response(client.request_json("POST", f"/api/projects/{args.project_id}/payments/setup"))
+    if args.resource == "customer" and args.action == "setup":
+        return _print_response(client.request_json("POST", f"/api/customers/{args.customer_id}/payments/setup"))
+    if args.resource == "customer" and args.action == "projects":
+        return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/projects"))
+    if args.resource == "customer" and args.action == "add-project":
+        return _print_response(client.request_json("POST", f"/api/customers/{args.customer_id}/projects/{args.project_id}"))
+    if args.resource == "customer" and args.action == "remove-project":
+        return _print_response(client.request_json("DELETE", f"/api/customers/{args.customer_id}/projects/{args.project_id}"))
 
     if args.resource == "payment" and args.action == "create":
         payload = {
@@ -319,13 +336,13 @@ def main(argv: list[str] | None = None) -> int:
         }
         if args.currency:
             payload["currency"] = args.currency
-        return _print_response(client.request_json("PUT", f"/api/projects/{args.project_id}/payments/events/{args.event_id}", payload))
+        return _print_response(client.request_json("PUT", f"/api/customers/{args.customer_id}/payments/events/{args.event_id}", payload))
     if args.resource == "payment" and args.action == "list":
-        return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments?size={args.size}"))
+        return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/payments?size={args.size}"))
     if args.resource == "payment" and args.action == "show":
-        return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments/events/{args.event_id}"))
+        return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/payments/events/{args.event_id}"))
     if args.resource == "payment" and args.action == "balance":
-        path = f"/api/projects/{args.project_id}/payments/balance"
+        path = f"/api/customers/{args.customer_id}/payments/balance"
         params = {}
         if args.costs_from_date:
             params["costs_from_date"] = args.costs_from_date
@@ -346,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
             "costs_total": args.costs_total,
             "payments_total": args.payments_total,
         }
-        return _print_response(client.request_json("PUT", f"/api/projects/{args.project_id}/payments/balance", payload))
+        return _print_response(client.request_json("PUT", f"/api/customers/{args.customer_id}/payments/balance", payload))
 
     if args.resource == "invoice" and args.action == "create":
         payload = {
@@ -358,11 +375,11 @@ def main(argv: list[str] | None = None) -> int:
         }
         if args.currency:
             payload["currency"] = args.currency
-        return _print_response(client.request_json("POST", f"/api/projects/{args.project_id}/invoices", payload))
+        return _print_response(client.request_json("POST", f"/api/customers/{args.customer_id}/invoices", payload))
     if args.resource == "invoice" and args.action == "list":
-        return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/invoices"))
+        return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/invoices"))
     if args.resource == "invoice" and args.action == "show":
-        return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/invoices/{args.invoice_id}"))
+        return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/invoices/{args.invoice_id}"))
     if args.resource == "invoice" and args.action == "file":
         params = {
             "view": "html" if args.html else "pdf",
@@ -372,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.email:
             params["email"] = args.email
         query = parse.urlencode(params)
-        status, body, headers = client.request_raw("GET", f"/api/projects/{args.project_id}/invoices/{args.invoice_id}/file?{query}")
+        status, body, headers = client.request_raw("GET", f"/api/customers/{args.customer_id}/invoices/{args.invoice_id}/file?{query}")
         if args.download_path and 200 <= status < 300:
             with open(args.download_path, "wb") as fp:
                 fp.write(body)
@@ -410,9 +427,9 @@ def main(argv: list[str] | None = None) -> int:
         }
         if args.currency:
             payload["currency"] = args.currency
-        return _print_response(client.request_json("POST", f"/api/projects/{args.project_id}/receipts", payload))
+        return _print_response(client.request_json("POST", f"/api/customers/{args.customer_id}/receipts", payload))
     if args.resource == "receipt" and args.action == "list":
-        return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/receipts"))
+        return _print_response(client.request_json("GET", f"/api/customers/{args.customer_id}/receipts"))
     if args.resource == "receipt" and args.action == "file":
         params = {
             "view": "html" if args.html else "pdf",
@@ -422,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.email:
             params["email"] = args.email
         query = parse.urlencode(params)
-        status, body, headers = client.request_raw("GET", f"/api/projects/{args.project_id}/receipts/{args.receipt_id}/file?{query}")
+        status, body, headers = client.request_raw("GET", f"/api/customers/{args.customer_id}/receipts/{args.receipt_id}/file?{query}")
         if args.download_path and 200 <= status < 300:
             with open(args.download_path, "wb") as fp:
                 fp.write(body)

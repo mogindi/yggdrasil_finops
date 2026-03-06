@@ -77,29 +77,29 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
         if parsed.path == "/healthz":
             return self._json({"status": "ok", "service": "document_generator"})
         parts = parsed.path.split("/")
-        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects":
-            project_id = parts[3]
+        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "customers":
+            customer_id = parts[3]
             if parts[4] == "invoices":
-                return self._project_invoices_get(project_id, parts)
+                return self._project_invoices_get(customer_id, parts)
             if parts[4] == "receipts":
-                return self._project_receipts_get(project_id, parts)
+                return self._project_receipts_get(customer_id, parts)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self):
         self._log_api_request()
         parts = urlparse(self.path).path.split("/")
-        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "projects":
-            project_id = parts[3]
+        if len(parts) >= 5 and parts[1] == "api" and parts[2] == "customers":
+            customer_id = parts[3]
             if parts[4] == "invoices":
-                return self._project_invoices_post(project_id)
+                return self._project_invoices_post(customer_id)
             if parts[4] == "receipts":
-                return self._project_receipts_post(project_id)
+                return self._project_receipts_post(customer_id)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_DELETE(self):
         self._log_api_request()
         parts = urlparse(self.path).path.split("/")
-        if len(parts) == 6 and parts[1] == "api" and parts[2] == "projects" and parts[4] == "invoices":
+        if len(parts) == 6 and parts[1] == "api" and parts[2] == "customers" and parts[4] == "invoices":
             return self._project_invoices_delete(parts[3], parts[5])
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -114,14 +114,14 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
             return None
         return logo_path
 
-    def _project_invoices_get(self, project_id: str, parts: list[str]):
+    def _project_invoices_get(self, customer_id: str, parts: list[str]):
         try:
             if len(parts) == 5:
-                return self._json({"invoices": BILLING_SERVICE.list_invoices(project_id)})
+                return self._json({"invoices": BILLING_SERVICE.list_invoices(customer_id)})
             if len(parts) == 6:
-                return self._json(BILLING_SERVICE.get_invoice(project_id, parts[5]))
+                return self._json(BILLING_SERVICE.get_invoice(customer_id, parts[5]))
             if len(parts) == 7 and parts[6] == "file":
-                return self._project_invoice_file_get(project_id, parts[5])
+                return self._project_invoice_file_get(customer_id, parts[5])
         except InvoiceNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
         except BillingError as exc:
@@ -131,18 +131,18 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
             return self._json({"error": str(exc)}, status=502)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
-    def _project_invoices_post(self, project_id: str):
+    def _project_invoices_post(self, customer_id: str):
         body = self._read_json_body()
         req = InvoiceCreateRequest(float(body.get("amount_due", 0)), body.get("currency", get_default_currency()), body.get("customer_name", ""), body.get("customer_email", ""), body.get("due_at"), body.get("description", ""))
         try:
-            return self._json(BILLING_SERVICE.create_invoice(project_id, req), status=201)
+            return self._json(BILLING_SERVICE.create_invoice(customer_id, req), status=201)
         except (OpenSearchApiError, OpenSearchError) as exc:
             self._log_opensearch_failure(exc, status=502)
             return self._json({"error": str(exc)}, status=502)
 
-    def _project_invoices_delete(self, project_id: str, invoice_id: str):
+    def _project_invoices_delete(self, customer_id: str, invoice_id: str):
         try:
-            BILLING_SERVICE.delete_invoice(project_id, invoice_id)
+            BILLING_SERVICE.delete_invoice(customer_id, invoice_id)
             return self._json({"deleted": True, "invoice_id": invoice_id})
         except InvoiceNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
@@ -151,28 +151,28 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
                 self._log_opensearch_failure(exc, status=400)
             return self._json({"error": str(exc)}, status=400)
 
-    def _project_receipts_get(self, project_id: str, parts: list[str]):
+    def _project_receipts_get(self, customer_id: str, parts: list[str]):
         try:
             if len(parts) == 7 and parts[6] == "file":
-                return self._project_receipt_file_get(project_id, parts[5])
-            return self._json({"receipts": BILLING_SERVICE.list_receipts(project_id)})
+                return self._project_receipt_file_get(customer_id, parts[5])
+            return self._json({"receipts": BILLING_SERVICE.list_receipts(customer_id)})
         except ReceiptNotFoundError as exc:
             return self._json({"error": str(exc)}, status=404)
 
-    def _project_receipts_post(self, project_id: str):
+    def _project_receipts_post(self, customer_id: str):
         body = self._read_json_body()
         req = ReceiptCreateRequest(body.get("invoice_id", ""), float(body.get("amount_paid", 0)), body.get("currency", get_default_currency()), body.get("paid_at"), body.get("payment_method", "unknown"), body.get("payment_reference", ""))
         try:
-            return self._json(BILLING_SERVICE.create_receipt(project_id, req), status=201)
+            return self._json(BILLING_SERVICE.create_receipt(customer_id, req), status=201)
         except (InvoiceNotFoundError, BillingError) as exc:
             return self._json({"error": str(exc)}, status=400)
 
-    def _project_invoice_file_get(self, project_id: str, invoice_id: str):
+    def _project_invoice_file_get(self, customer_id: str, invoice_id: str):
         q = parse_qs(urlparse(self.path).query)
         logo_path = self._require_logo_path()
         if not logo_path:
             return
-        invoice = BILLING_SERVICE.get_invoice(project_id, invoice_id)
+        invoice = BILLING_SERVICE.get_invoice(customer_id, invoice_id)
         try:
             pdf = DOCUMENT_SERVICE.build_invoice_pdf(invoice, logo_path=logo_path)
         except DocumentError as exc:
@@ -187,13 +187,13 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
             return self._html(DOCUMENT_SERVICE.build_pdf_html_page(f"Invoice {invoice_id}", f"{invoice_id}.pdf", pdf))
         return self._pdf(pdf, f"{invoice_id}.pdf", q.get("download", ["false"])[0].lower() == "true")
 
-    def _project_receipt_file_get(self, project_id: str, receipt_id: str):
+    def _project_receipt_file_get(self, customer_id: str, receipt_id: str):
         q = parse_qs(urlparse(self.path).query)
         logo_path = self._require_logo_path()
         if not logo_path:
             return
-        receipt = BILLING_SERVICE.get_receipt(project_id, receipt_id)
-        invoice = BILLING_SERVICE.get_invoice(project_id, receipt.get("invoice_id", ""))
+        receipt = BILLING_SERVICE.get_receipt(customer_id, receipt_id)
+        invoice = BILLING_SERVICE.get_invoice(customer_id, receipt.get("invoice_id", ""))
         try:
             pdf = DOCUMENT_SERVICE.build_receipt_pdf(receipt, invoice, logo_path=logo_path)
         except DocumentError as exc:

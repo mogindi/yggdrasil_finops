@@ -12,11 +12,30 @@ from urllib.parse import parse_qs, urlparse
 
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from currency import get_default_currency
-from startup_validation import describe_env, env_flag_enabled, print_env_resolution
+from customer_mapping_service import OpenSearchCustomerProjectRepository
+from opensearch_client import OpenSearchClient
+from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
 LOGGER = logging.getLogger("costs_usage_app")
+
+
+def _build_customer_project_repo():
+    opensearch_url = os.environ.get("OPENSEARCH_URL", "").strip()
+    if not opensearch_url:
+        raise RuntimeError("OPENSEARCH_URL is required for persistent customer-project mapping")
+    return OpenSearchCustomerProjectRepository(OpenSearchClient(debug=DEBUG_MODE))
+
+
+CUSTOMER_PROJECT_REPO = None
+
+
+def _customer_project_repo() -> OpenSearchCustomerProjectRepository:
+    global CUSTOMER_PROJECT_REPO
+    if CUSTOMER_PROJECT_REPO is None:
+        CUSTOMER_PROJECT_REPO = _build_customer_project_repo()
+    return CUSTOMER_PROJECT_REPO
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -81,6 +100,70 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
             if len(parts) == 7 and parts[4] == "costs" and parts[5] == "monthly" and parts[6] == "graph":
                 return self._project_costs_monthly_graph(parts[3])
 
+
+        if parsed.path.startswith("/api/customers/"):
+            parts = parsed.path.split("/")
+            if len(parts) >= 5 and parts[4] == "costs":
+                return self._customer_costs(parts[3], parse_qs(parsed.query))
+            if len(parts) == 5 and parts[4] == "projects":
+                mapping = _customer_project_repo().get(parts[3])
+                return self._json({"customer_id": mapping.customer_id, "project_ids": mapping.project_ids})
+
+
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def _customer_costs(self, customer_id: str, query: dict[str, list[str]]):
+        now = dt.datetime.now(dt.timezone.utc)
+        start = _parse_date(query.get("start", [None])[0], now - dt.timedelta(days=30))
+        end = _parse_date(query.get("end", [None])[0], now)
+        include_series = query.get("include_series", ["false"])[0].lower() == "true"
+        resolution = query.get("resolution", ["day"])[0]
+
+        mapping = _customer_project_repo().get(customer_id)
+        client = CloudKittyClient(debug=DEBUG_MODE)
+        per_project: list[dict] = []
+        total = 0.0
+        for project_id in mapping.project_ids:
+            try:
+                aggregate = client.get_project_aggregate_for_range(project_id, start, end)
+                per_project.append({"project_id": project_id, "aggregate_cost": aggregate})
+                total += float(aggregate)
+            except ProjectNotFoundError:
+                per_project.append({"project_id": project_id, "aggregate_cost": 0.0, "missing": True})
+            except (OpenStackAuthError, CloudKittyError) as exc:
+                return self._json({"error": str(exc)}, status=502)
+
+        response = {
+            "customer_id": customer_id,
+            "project_costs": per_project,
+            "aggregate_cost_now": total,
+            "currency": get_default_currency(),
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "resolution": resolution,
+        }
+        if include_series:
+            response["time_series"] = []
+        return self._json(response)
+
+    def do_POST(self):
+        self._log_api_request()
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/customers/"):
+            parts = parsed.path.split("/")
+            if len(parts) == 6 and parts[4] == "projects":
+                mapping = _customer_project_repo().add_project(parts[3], parts[5])
+                return self._json({"customer_id": mapping.customer_id, "project_ids": mapping.project_ids}, status=201)
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def do_DELETE(self):
+        self._log_api_request()
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/customers/"):
+            parts = parsed.path.split("/")
+            if len(parts) == 6 and parts[4] == "projects":
+                mapping = _customer_project_repo().remove_project(parts[3], parts[5])
+                return self._json({"customer_id": mapping.customer_id, "project_ids": mapping.project_ids})
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def _project_costs(self, project_id: str, query: dict[str, list[str]]):
@@ -221,6 +304,16 @@ def run() -> None:
         value, using_default = describe_env(var_name, default)
         display = "***" if var_name == "OS_PASSWORD" else value
         print_env_resolution(var_name, display, using_default)
+
+    opensearch_url, os_defaulted = describe_env("OPENSEARCH_URL")
+    print_env_resolution("OPENSEARCH_URL", opensearch_url, os_defaulted)
+    validate_http_endpoint("OPENSEARCH_URL", opensearch_url, health_path="/")
+
+    os_verify, os_verify_defaulted = describe_env("OS_VERIFY")
+    print_env_resolution("OS_VERIFY", os_verify, os_verify_defaulted)
+
+    global CUSTOMER_PROJECT_REPO
+    CUSTOMER_PROJECT_REPO = _build_customer_project_repo()
 
     project_id = os.environ.get("OS_PROJECT_ID", "").strip()
     project_name = os.environ.get("OS_PROJECT_NAME", "").strip()

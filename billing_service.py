@@ -47,41 +47,41 @@ class InMemoryBillingRepository:
         self._invoices: dict[str, dict[str, dict]] = {}
         self._receipts: dict[str, dict[str, dict]] = {}
 
-    def create_invoice(self, project_id: str, invoice: dict) -> dict:
+    def create_invoice(self, customer_id: str, invoice: dict) -> dict:
         with self._lock:
-            self._invoices.setdefault(project_id, {})[invoice["invoice_id"]] = invoice
+            self._invoices.setdefault(customer_id, {})[invoice["invoice_id"]] = invoice
         return invoice
 
-    def list_invoices(self, project_id: str) -> list[dict]:
+    def list_invoices(self, customer_id: str) -> list[dict]:
         with self._lock:
-            return list(self._invoices.get(project_id, {}).values())
+            return list(self._invoices.get(customer_id, {}).values())
 
-    def get_invoice(self, project_id: str, invoice_id: str) -> dict | None:
+    def get_invoice(self, customer_id: str, invoice_id: str) -> dict | None:
         with self._lock:
-            return self._invoices.get(project_id, {}).get(invoice_id)
+            return self._invoices.get(customer_id, {}).get(invoice_id)
 
-    def save_invoice(self, project_id: str, invoice: dict) -> dict:
+    def save_invoice(self, customer_id: str, invoice: dict) -> dict:
         with self._lock:
-            self._invoices.setdefault(project_id, {})[invoice["invoice_id"]] = invoice
+            self._invoices.setdefault(customer_id, {})[invoice["invoice_id"]] = invoice
         return invoice
 
-    def delete_invoice(self, project_id: str, invoice_id: str) -> bool:
+    def delete_invoice(self, customer_id: str, invoice_id: str) -> bool:
         with self._lock:
-            project_invoices = self._invoices.get(project_id, {})
+            project_invoices = self._invoices.get(customer_id, {})
             return project_invoices.pop(invoice_id, None) is not None
 
-    def create_receipt(self, project_id: str, receipt: dict) -> dict:
+    def create_receipt(self, customer_id: str, receipt: dict) -> dict:
         with self._lock:
-            self._receipts.setdefault(project_id, {})[receipt["receipt_id"]] = receipt
+            self._receipts.setdefault(customer_id, {})[receipt["receipt_id"]] = receipt
         return receipt
 
-    def get_receipt(self, project_id: str, receipt_id: str) -> dict | None:
+    def get_receipt(self, customer_id: str, receipt_id: str) -> dict | None:
         with self._lock:
-            return self._receipts.get(project_id, {}).get(receipt_id)
+            return self._receipts.get(customer_id, {}).get(receipt_id)
 
-    def list_receipts(self, project_id: str) -> list[dict]:
+    def list_receipts(self, customer_id: str) -> list[dict]:
         with self._lock:
-            return list(self._receipts.get(project_id, {}).values())
+            return list(self._receipts.get(customer_id, {}).values())
 
 
 class BillingService:
@@ -92,11 +92,11 @@ class BillingService:
     def _utc_now_iso() -> str:
         return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
 
-    def create_invoice(self, project_id: str, request: InvoiceCreateRequest) -> dict:
+    def create_invoice(self, customer_id: str, request: InvoiceCreateRequest) -> dict:
         created_at = self._utc_now_iso()
         invoice = {
             "invoice_id": f"inv_{uuid.uuid4().hex[:16]}",
-            "project_id": project_id,
+            "customer_id": customer_id,
             "customer": {
                 "name": request.customer_name,
                 "email": request.customer_email,
@@ -110,35 +110,35 @@ class BillingService:
             "due_at": request.due_at,
             "updated_at": created_at,
         }
-        return self._repo.create_invoice(project_id, invoice)
+        return self._repo.create_invoice(customer_id, invoice)
 
-    def list_invoices(self, project_id: str) -> list[dict]:
-        return self._repo.list_invoices(project_id)
+    def list_invoices(self, customer_id: str) -> list[dict]:
+        return self._repo.list_invoices(customer_id)
 
-    def get_invoice(self, project_id: str, invoice_id: str) -> dict:
-        invoice = self._repo.get_invoice(project_id, invoice_id)
+    def get_invoice(self, customer_id: str, invoice_id: str) -> dict:
+        invoice = self._repo.get_invoice(customer_id, invoice_id)
         if not invoice:
-            raise InvoiceNotFoundError(f"Invoice '{invoice_id}' does not exist for project '{project_id}'")
+            raise InvoiceNotFoundError(f"Invoice '{invoice_id}' does not exist for customer '{customer_id}'")
         return invoice
 
-    def delete_invoice(self, project_id: str, invoice_id: str) -> None:
-        deleted = self._repo.delete_invoice(project_id, invoice_id)
+    def delete_invoice(self, customer_id: str, invoice_id: str) -> None:
+        deleted = self._repo.delete_invoice(customer_id, invoice_id)
         if not deleted:
-            raise InvoiceNotFoundError(f"Invoice '{invoice_id}' does not exist for project '{project_id}'")
+            raise InvoiceNotFoundError(f"Invoice '{invoice_id}' does not exist for customer '{customer_id}'")
 
-    def create_receipt(self, project_id: str, request: ReceiptCreateRequest) -> dict:
-        invoice = self.get_invoice(project_id, request.invoice_id)
+    def create_receipt(self, customer_id: str, request: ReceiptCreateRequest) -> dict:
+        invoice = self.get_invoice(customer_id, request.invoice_id)
         invoice["amount_paid"] = float(invoice.get("amount_paid", 0.0)) + float(request.amount_paid)
         if invoice["amount_paid"] >= float(invoice["amount_due"]):
             invoice["status"] = "paid"
         else:
             invoice["status"] = "partially_paid"
         invoice["updated_at"] = self._utc_now_iso()
-        self._repo.save_invoice(project_id, invoice)
+        self._repo.save_invoice(customer_id, invoice)
 
         receipt = {
             "receipt_id": f"rcpt_{uuid.uuid4().hex[:16]}",
-            "project_id": project_id,
+            "customer_id": customer_id,
             "invoice_id": request.invoice_id,
             "amount_paid": float(request.amount_paid),
             "currency": request.currency,
@@ -147,25 +147,25 @@ class BillingService:
             "payment_reference": request.payment_reference,
             "created_at": self._utc_now_iso(),
         }
-        return self._repo.create_receipt(project_id, receipt)
+        return self._repo.create_receipt(customer_id, receipt)
 
-    def get_receipt(self, project_id: str, receipt_id: str) -> dict:
-        receipt = self._repo.get_receipt(project_id, receipt_id)
+    def get_receipt(self, customer_id: str, receipt_id: str) -> dict:
+        receipt = self._repo.get_receipt(customer_id, receipt_id)
         if not receipt:
-            raise ReceiptNotFoundError(f"Receipt '{receipt_id}' does not exist for project '{project_id}'")
+            raise ReceiptNotFoundError(f"Receipt '{receipt_id}' does not exist for customer '{customer_id}'")
         return receipt
 
-    def list_receipts(self, project_id: str) -> list[dict]:
-        return self._repo.list_receipts(project_id)
+    def list_receipts(self, customer_id: str) -> list[dict]:
+        return self._repo.list_receipts(customer_id)
 
 
 class OpenSearchBillingRepository:
     def __init__(self, client: OpenSearchClient):
         self._client = client
-        self._invoices_index = "project-invoices"
-        self._receipts_index = "project-receipts"
+        self._invoices_index = "customer-invoices"
+        self._receipts_index = "customer-receipts"
 
-    def create_invoice(self, project_id: str, invoice: dict) -> dict:
+    def create_invoice(self, customer_id: str, invoice: dict) -> dict:
         self._ensure_index_exists(self._invoices_index)
         self._client._http_json("PUT", f"/{self._invoices_index}/_doc/{parse.quote(invoice['invoice_id'])}", invoice)
         return invoice
@@ -191,13 +191,13 @@ class OpenSearchBillingRepository:
                 return
             raise
 
-    def list_invoices(self, project_id: str) -> list[dict]:
+    def list_invoices(self, customer_id: str) -> list[dict]:
         try:
             payload = self._client._http_json(
                 "GET",
                 f"/{self._invoices_index}/_search",
                 {
-                    "query": {"term": {"project_id": project_id}},
+                    "query": {"term": {"customer_id": customer_id}},
                     "sort": [{"created_at": "desc"}],
                     "size": 500,
                 },
@@ -208,7 +208,7 @@ class OpenSearchBillingRepository:
             raise
         return [hit.get("_source", {}) for hit in payload.get("hits", {}).get("hits", [])]
 
-    def get_invoice(self, project_id: str, invoice_id: str) -> dict | None:
+    def get_invoice(self, customer_id: str, invoice_id: str) -> dict | None:
         try:
             payload = self._client._http_json(
                 "GET",
@@ -217,7 +217,7 @@ class OpenSearchBillingRepository:
                     "query": {
                         "bool": {
                             "filter": [
-                                {"term": {"project_id": project_id}},
+                                {"term": {"customer_id": customer_id}},
                                 {"term": {"invoice_id": invoice_id}},
                             ]
                         }
@@ -232,24 +232,24 @@ class OpenSearchBillingRepository:
         hits = payload.get("hits", {}).get("hits", [])
         return hits[0].get("_source") if hits else None
 
-    def save_invoice(self, project_id: str, invoice: dict) -> dict:
+    def save_invoice(self, customer_id: str, invoice: dict) -> dict:
         self._ensure_index_exists(self._invoices_index)
         self._client._http_json("PUT", f"/{self._invoices_index}/_doc/{parse.quote(invoice['invoice_id'])}", invoice)
         return invoice
 
-    def delete_invoice(self, project_id: str, invoice_id: str) -> bool:
-        invoice = self.get_invoice(project_id, invoice_id)
+    def delete_invoice(self, customer_id: str, invoice_id: str) -> bool:
+        invoice = self.get_invoice(customer_id, invoice_id)
         if not invoice:
             return False
         self._client._http_json("DELETE", f"/{self._invoices_index}/_doc/{parse.quote(invoice_id)}")
         return True
 
-    def create_receipt(self, project_id: str, receipt: dict) -> dict:
+    def create_receipt(self, customer_id: str, receipt: dict) -> dict:
         self._ensure_index_exists(self._receipts_index)
         self._client._http_json("PUT", f"/{self._receipts_index}/_doc/{parse.quote(receipt['receipt_id'])}", receipt)
         return receipt
 
-    def get_receipt(self, project_id: str, receipt_id: str) -> dict | None:
+    def get_receipt(self, customer_id: str, receipt_id: str) -> dict | None:
         try:
             payload = self._client._http_json(
                 "GET",
@@ -258,7 +258,7 @@ class OpenSearchBillingRepository:
                     "query": {
                         "bool": {
                             "filter": [
-                                {"term": {"project_id": project_id}},
+                                {"term": {"customer_id": customer_id}},
                                 {"term": {"receipt_id": receipt_id}},
                             ]
                         }
@@ -273,13 +273,13 @@ class OpenSearchBillingRepository:
         hits = payload.get("hits", {}).get("hits", [])
         return hits[0].get("_source") if hits else None
 
-    def list_receipts(self, project_id: str) -> list[dict]:
+    def list_receipts(self, customer_id: str) -> list[dict]:
         try:
             payload = self._client._http_json(
                 "GET",
                 f"/{self._receipts_index}/_search",
                 {
-                    "query": {"term": {"project_id": project_id}},
+                    "query": {"term": {"customer_id": customer_id}},
                     "sort": [{"created_at": "desc"}],
                     "size": 500,
                 },
