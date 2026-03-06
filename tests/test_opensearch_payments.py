@@ -304,6 +304,41 @@ class OpenSearchPaymentsTests(unittest.TestCase):
             {"properties": {"costs_total": {"type": "scaled_float", "scaling_factor": 100}}},
         )
 
+    def test_upsert_balance_backfills_multiple_mappings_until_update_succeeds(self):
+        client = OpenSearchClient()
+        dynamic_costs_exc = OpenSearchApiError(
+            "OpenSearch request failed (400) method=POST url=http://opensearch:9200/project-balances/_update/proj-123: "
+            "mapping set to strict, dynamic introduction of [costs_total] within [_doc] is not allowed",
+            status_code=400,
+        )
+        dynamic_payments_exc = OpenSearchApiError(
+            "OpenSearch request failed (400)",
+            status_code=400,
+            body=json.dumps(
+                {
+                    "error": {
+                        "reason": "mapping set to strict, dynamic introduction of [payments_total] within [_doc] is not allowed"
+                    }
+                }
+            ),
+        )
+        with patch.object(
+            client,
+            "_http_json",
+            side_effect=[
+                dynamic_costs_exc,
+                {"acknowledged": True},
+                dynamic_payments_exc,
+                {"acknowledged": True},
+                {"result": "updated"},
+            ],
+        ) as http_mock:
+            payload = client.upsert_balance("proj-123", "USD", costs_total=120.0, payments_total=150.0)
+
+        self.assertEqual(payload["result"], "updated")
+        self.assertEqual(http_mock.call_args_list[1].args[2], {"properties": {"costs_total": {"type": "scaled_float", "scaling_factor": 100}}})
+        self.assertEqual(http_mock.call_args_list[3].args[2], {"properties": {"payments_total": {"type": "scaled_float", "scaling_factor": 100}}})
+
     def test_search_project_payments_backfills_default_currency(self):
         client = OpenSearchClient()
         with patch.object(
