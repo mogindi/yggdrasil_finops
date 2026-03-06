@@ -334,6 +334,55 @@ class OpenSearchClient:
                 return {"hits": {"total": {"value": 0, "relation": "eq"}}, "aggregations": {"total_paid": {"value": 0.0}}}
             raise
 
+    def get_total_paid_in_range(self, project_id: str, created_from: str | None = None, created_to: str | None = None) -> dict[str, Any]:
+        filters: list[dict[str, Any]] = [
+            {"term": {"project_id": project_id}},
+            {"terms": {"status": ["succeeded", "captured"]}},
+            {"terms": {"direction": ["in", "inbound"]}},
+        ]
+        range_filter: dict[str, str] = {}
+        if created_from:
+            range_filter["gte"] = created_from
+        if created_to:
+            range_filter["lte"] = created_to
+        if range_filter:
+            filters.append({"range": {"ingested_at": range_filter}})
+
+        body = {
+            "size": 0,
+            "query": {"bool": {"filter": filters}},
+            "aggs": {"total_paid": {"sum": {"field": "amount"}}},
+        }
+        try:
+            return self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"hits": {"total": {"value": 0, "relation": "eq"}}, "aggregations": {"total_paid": {"value": 0.0}}}
+            raise
+
+    def list_payments_created_in_range(self, project_id: str, created_from: str | None = None, created_to: str | None = None, size: int = 500) -> list[dict[str, Any]]:
+        filters: list[dict[str, Any]] = [{"term": {"project_id": project_id}}]
+        range_filter: dict[str, str] = {}
+        if created_from:
+            range_filter["gte"] = created_from
+        if created_to:
+            range_filter["lte"] = created_to
+        if range_filter:
+            filters.append({"range": {"ingested_at": range_filter}})
+
+        body = {
+            "query": {"bool": {"filter": filters}},
+            "sort": [{"ingested_at": "asc"}],
+            "size": size,
+        }
+        try:
+            payload = self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return []
+            raise
+        return [hit.get("_source", {}) for hit in payload.get("hits", {}).get("hits", [])]
+
     def upsert_balance(self, project_id: str, currency: str, costs_total: float, payments_total: float) -> dict[str, Any]:
         balance = float(costs_total) - float(payments_total)
         body = {

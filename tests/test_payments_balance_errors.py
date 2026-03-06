@@ -34,6 +34,12 @@ class FakeOpenSearchClient:
     def get_total_paid(self, project_id, paid_before=None):
         return {"aggregations": {"total_paid": {"value": 10.0}}}
 
+    def get_total_paid_in_range(self, project_id, created_from=None, created_to=None):
+        return {"aggregations": {"total_paid": {"value": 10.0}}}
+
+    def list_payments_created_in_range(self, project_id, created_from=None, created_to=None, size=500):
+        return []
+
 
 class TestPaymentsBalanceErrorHandling:
     def _request(self, method, path):
@@ -78,3 +84,13 @@ class TestPaymentsBalanceErrorHandling:
 
         assert status == 404
         assert body["error"] == "Project 'proj-123' does not exist"
+
+
+
+    def test_parse_iso_date_defaults_to_start_of_day_utc(self):
+        parsed = payments_app._parse_iso_date_or_datetime("2026-01-01")
+        assert parsed.isoformat() == "2026-01-01T00:00:00+00:00"
+
+    def test_parse_iso_date_to_date_uses_end_of_day_when_requested(self):
+        parsed = payments_app._parse_iso_date_or_datetime("2026-01-01", end_of_day_for_date_only=True)
+        assert parsed.isoformat() == "2026-01-01T23:59:59+00:00"
