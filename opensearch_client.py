@@ -333,7 +333,10 @@ class OpenSearchClient:
         try:
             return self._http_json("GET", f"/project-balances/_doc/{parse.quote(project_id)}")
         except OpenSearchApiError as exc:
-            if exc.status_code == 404:
+            # Some OpenSearch-compatible gateways normalize not-found failures and
+            # can drop the structured status/body fields while preserving the
+            # original error text. Treat those variants as an empty balance.
+            if exc.status_code == 404 or "request failed (404)" in str(exc).lower() or self._is_missing_index(exc):
                 return {
                     "_index": "project-balances",
                     "_id": project_id,
