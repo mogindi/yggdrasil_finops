@@ -12,9 +12,9 @@ from urllib.parse import parse_qs, urlparse
 
 from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from currency import get_default_currency
-from customer_mapping_service import InMemoryCustomerProjectRepository, OpenSearchCustomerProjectRepository
+from customer_mapping_service import OpenSearchCustomerProjectRepository
 from opensearch_client import OpenSearchClient
-from startup_validation import describe_env, env_flag_enabled, print_env_resolution
+from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 ROOT = Path(__file__).resolve().parent
 DEBUG_MODE = False
@@ -23,12 +23,19 @@ LOGGER = logging.getLogger("costs_usage_app")
 
 def _build_customer_project_repo():
     opensearch_url = os.environ.get("OPENSEARCH_URL", "").strip()
-    if opensearch_url:
-        return OpenSearchCustomerProjectRepository(OpenSearchClient(debug=DEBUG_MODE))
-    return InMemoryCustomerProjectRepository()
+    if not opensearch_url:
+        raise RuntimeError("OPENSEARCH_URL is required for persistent customer-project mapping")
+    return OpenSearchCustomerProjectRepository(OpenSearchClient(debug=DEBUG_MODE))
 
 
-CUSTOMER_PROJECT_REPO = _build_customer_project_repo()
+CUSTOMER_PROJECT_REPO = None
+
+
+def _customer_project_repo() -> OpenSearchCustomerProjectRepository:
+    global CUSTOMER_PROJECT_REPO
+    if CUSTOMER_PROJECT_REPO is None:
+        CUSTOMER_PROJECT_REPO = _build_customer_project_repo()
+    return CUSTOMER_PROJECT_REPO
 
 
 def _parse_date(raw: str | None, default: dt.datetime) -> dt.datetime:
@@ -99,7 +106,7 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
             if len(parts) >= 5 and parts[4] == "costs":
                 return self._customer_costs(parts[3], parse_qs(parsed.query))
             if len(parts) == 5 and parts[4] == "projects":
-                mapping = CUSTOMER_PROJECT_REPO.get(parts[3])
+                mapping = _customer_project_repo().get(parts[3])
                 return self._json({"customer_id": mapping.customer_id, "project_ids": mapping.project_ids})
 
 
@@ -112,7 +119,7 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
         include_series = query.get("include_series", ["false"])[0].lower() == "true"
         resolution = query.get("resolution", ["day"])[0]
 
-        mapping = CUSTOMER_PROJECT_REPO.get(customer_id)
+        mapping = _customer_project_repo().get(customer_id)
         client = CloudKittyClient(debug=DEBUG_MODE)
         per_project: list[dict] = []
         total = 0.0
@@ -145,7 +152,7 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/customers/"):
             parts = parsed.path.split("/")
             if len(parts) == 6 and parts[4] == "projects":
-                mapping = CUSTOMER_PROJECT_REPO.add_project(parts[3], parts[5])
+                mapping = _customer_project_repo().add_project(parts[3], parts[5])
                 return self._json({"customer_id": mapping.customer_id, "project_ids": mapping.project_ids}, status=201)
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -155,7 +162,7 @@ class CostsUsageHandler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/customers/"):
             parts = parsed.path.split("/")
             if len(parts) == 6 and parts[4] == "projects":
-                mapping = CUSTOMER_PROJECT_REPO.remove_project(parts[3], parts[5])
+                mapping = _customer_project_repo().remove_project(parts[3], parts[5])
                 return self._json({"customer_id": mapping.customer_id, "project_ids": mapping.project_ids})
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -297,6 +304,16 @@ def run() -> None:
         value, using_default = describe_env(var_name, default)
         display = "***" if var_name == "OS_PASSWORD" else value
         print_env_resolution(var_name, display, using_default)
+
+    opensearch_url, os_defaulted = describe_env("OPENSEARCH_URL")
+    print_env_resolution("OPENSEARCH_URL", opensearch_url, os_defaulted)
+    validate_http_endpoint("OPENSEARCH_URL", opensearch_url, health_path="/")
+
+    os_verify, os_verify_defaulted = describe_env("OS_VERIFY")
+    print_env_resolution("OS_VERIFY", os_verify, os_verify_defaulted)
+
+    global CUSTOMER_PROJECT_REPO
+    CUSTOMER_PROJECT_REPO = _build_customer_project_repo()
 
     project_id = os.environ.get("OS_PROJECT_ID", "").strip()
     project_name = os.environ.get("OS_PROJECT_NAME", "").strip()

@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, urlparse
 
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
 from currency import get_default_currency
-from customer_mapping_service import InMemoryCustomerProjectRepository, OpenSearchCustomerProjectRepository
 from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 
@@ -19,16 +18,6 @@ DEBUG_MODE = False
 LOGGER = logging.getLogger("payments_app")
 COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL", "http://localhost:8083").rstrip("/")
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://localhost:8084").rstrip("/")
-
-
-def _build_customer_project_repo():
-    opensearch_url = os.environ.get("OPENSEARCH_URL", "").strip()
-    if opensearch_url:
-        return OpenSearchCustomerProjectRepository(OpenSearchClient(debug=DEBUG_MODE))
-    return InMemoryCustomerProjectRepository()
-
-
-CUSTOMER_PROJECT_REPO = _build_customer_project_repo()
 
 
 class CostsServiceError(Exception):
