@@ -164,6 +164,7 @@ class OpenSearchClient:
                     "properties": {
                         "event_id": {"type": "keyword"},
                         "project_id": {"type": "keyword"},
+                        "customer_id": {"type": "keyword"},
                         "invoice_id": {"type": "keyword"},
                         "payment_id": {"type": "keyword"},
                         "provider": {"type": "keyword"},
@@ -201,6 +202,7 @@ class OpenSearchClient:
                 "dynamic": "strict",
                 "properties": {
                     "project_id": {"type": "keyword"},
+                        "customer_id": {"type": "keyword"},
                     "currency": {"type": "keyword"},
                     "costs_total": {"type": "scaled_float", "scaling_factor": 100},
                     "payments_total": {"type": "scaled_float", "scaling_factor": 100},
@@ -217,6 +219,37 @@ class OpenSearchClient:
         except OpenSearchApiError as exc:
             if self._is_resource_already_exists(exc):
                 return {"acknowledged": True, "already_exists": True, "index": "project-balances"}
+            raise
+
+    def create_customer_projects_index(self) -> dict[str, Any]:
+        body = {
+            "settings": {"number_of_shards": 1, "number_of_replicas": 1},
+            "mappings": {
+                "dynamic": "strict",
+                "properties": {
+                    "customer_id": {"type": "keyword"},
+                    "project_ids": {"type": "keyword"},
+                    "updated_at": {"type": "date"},
+                },
+            },
+        }
+        try:
+            return self._http_json("PUT", "/customer-project-mappings", body)
+        except OpenSearchApiError as exc:
+            if self._is_resource_already_exists(exc):
+                return {"acknowledged": True, "already_exists": True, "index": "customer-project-mappings"}
+            raise
+
+    def put_customer_project_mapping(self, customer_id: str, document: dict[str, Any]) -> dict[str, Any]:
+        self.create_customer_projects_index()
+        return self._http_json("PUT", f"/customer-project-mappings/_doc/{parse.quote(customer_id)}", document)
+
+    def get_customer_project_mapping(self, customer_id: str) -> dict[str, Any]:
+        try:
+            return self._http_json("GET", f"/customer-project-mappings/_doc/{parse.quote(customer_id)}")
+        except OpenSearchApiError as exc:
+            if exc.status_code == 404 or self._is_missing_index(exc):
+                return {"_index": "customer-project-mappings", "_id": customer_id, "found": False, "_source": {"customer_id": customer_id, "project_ids": []}}
             raise
 
     @staticmethod
@@ -388,6 +421,7 @@ class OpenSearchClient:
         body = {
             "doc": {
                 "project_id": project_id,
+                "customer_id": project_id,
                 "currency": currency,
                 "costs_total": float(costs_total),
                 "payments_total": float(payments_total),
@@ -426,6 +460,7 @@ class OpenSearchClient:
                     "found": False,
                     "_source": {
                         "project_id": project_id,
+                "customer_id": project_id,
                         "currency": "",
                         "costs_total": 0.0,
                         "payments_total": 0.0,
@@ -436,6 +471,80 @@ class OpenSearchClient:
                     },
                 }
             raise
+
+
+    # Customer-oriented aliases
+    def search_customer_payments(self, customer_id: str, size: int = 25) -> dict[str, Any]:
+        body = {
+            "query": {"term": {"customer_id": customer_id}},
+            "sort": [{"paid_at": "desc"}],
+            "size": size,
+        }
+        try:
+            return self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"hits": {"hits": [], "total": {"value": 0, "relation": "eq"}}}
+            raise
+
+    def search_customer_invoice_payments(self, customer_id: str, invoice_id: str, size: int = 100) -> dict[str, Any]:
+        body = {
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"customer_id": customer_id}},
+                        {"term": {"invoice_id": invoice_id}},
+                        {"terms": {"status": ["succeeded", "captured"]}},
+                    ]
+                }
+            },
+            "sort": [{"paid_at": "asc"}],
+            "size": size,
+        }
+        try:
+            return self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"hits": {"hits": [], "total": {"value": 0, "relation": "eq"}}}
+            raise
+    def get_total_paid_by_customer(self, customer_id: str, created_from: str | None = None, created_to: str | None = None) -> dict[str, Any]:
+        filters: list[dict[str, Any]] = [
+            {"term": {"customer_id": customer_id}},
+            {"terms": {"status": ["succeeded", "captured"]}},
+            {"terms": {"direction": ["in", "inbound"]}},
+        ]
+        range_filter: dict[str, str] = {}
+        if created_from:
+            range_filter["gte"] = created_from
+        if created_to:
+            range_filter["lte"] = created_to
+        if range_filter:
+            filters.append({"range": {"ingested_at": range_filter}})
+        body = {"size": 0, "query": {"bool": {"filter": filters}}, "aggs": {"total_paid": {"sum": {"field": "amount"}}}}
+        try:
+            return self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"hits": {"total": {"value": 0, "relation": "eq"}}, "aggregations": {"total_paid": {"value": 0.0}}}
+            raise
+
+    def list_payments_created_in_range_by_customer(self, customer_id: str, created_from: str | None = None, created_to: str | None = None, size: int = 500) -> list[dict[str, Any]]:
+        filters: list[dict[str, Any]] = [{"term": {"customer_id": customer_id}}]
+        range_filter: dict[str, str] = {}
+        if created_from:
+            range_filter["gte"] = created_from
+        if created_to:
+            range_filter["lte"] = created_to
+        if range_filter:
+            filters.append({"range": {"ingested_at": range_filter}})
+        body = {"query": {"bool": {"filter": filters}}, "sort": [{"ingested_at": "asc"}], "size": size}
+        try:
+            payload = self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return []
+            raise
+        return [hit.get("_source", {}) for hit in payload.get("hits", {}).get("hits", [])]
 
     def get_index_mapping(self, partition: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)

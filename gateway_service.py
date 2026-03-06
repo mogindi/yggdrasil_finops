@@ -37,11 +37,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def _service_url_for_path(self, path: str) -> str | None:
         if path == "/" or path.startswith("/static/"):
             return COSTS_SERVICE_URL
-        if not path.startswith("/api/projects/"):
+        if not (path.startswith("/api/customers/") or path.startswith("/api/projects/")):
             return None
 
         parts = path.split("/")
         if len(parts) >= 5 and parts[4] == "costs":
+            return COSTS_SERVICE_URL
+        if len(parts) >= 5 and parts[4] == "projects":
             return COSTS_SERVICE_URL
         if len(parts) == 7 and parts[4] == "payments" and parts[5] == "revolut" and parts[6] == "order":
             return CHECKOUT_SERVICE_URL

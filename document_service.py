@@ -271,7 +271,7 @@ class DocumentService:
     def build_invoice_pdf(self, invoice: dict, logo_path: str | None = None) -> bytes:
         lines = [
             f"Invoice ID: {invoice.get('invoice_id', '')}",
-            f"Project ID: {invoice.get('project_id', '')}",
+            f"Customer ID: {invoice.get('customer_id', '')}",
             f"Customer: {invoice.get('customer', {}).get('name', '')}",
             f"Customer Email: {invoice.get('customer', {}).get('email', '')}",
             f"Description: {invoice.get('description', '')}",
@@ -287,7 +287,7 @@ class DocumentService:
         lines = [
             f"Receipt ID: {receipt.get('receipt_id', '')}",
             f"Invoice ID: {receipt.get('invoice_id', '')}",
-            f"Project ID: {receipt.get('project_id', '')}",
+            f"Customer ID: {receipt.get('customer_id', '')}",
             f"Amount Paid: {receipt.get('amount_paid', 0):.2f} {receipt.get('currency', get_default_currency())}",
             f"Paid At: {receipt.get('paid_at', '')}",
             f"Payment Method: {receipt.get('payment_method', '')}",
