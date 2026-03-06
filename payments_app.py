@@ -17,6 +17,7 @@ from startup_validation import describe_env, env_flag_enabled, print_env_resolut
 DEBUG_MODE = False
 LOGGER = logging.getLogger("payments_app")
 COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL", "http://localhost:8083").rstrip("/")
+DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://localhost:8084").rstrip("/")
 
 
 class CostsServiceError(Exception):
@@ -31,46 +32,31 @@ def _payments_partition(project_id: str) -> str:
     return f"project:{project_id}"
 
 
-def _parse_as_of_date(raw: str | None) -> dt.datetime | None:
+def _parse_iso_date_or_datetime(raw: str | None, *, end_of_day_for_date_only: bool = False) -> dt.datetime | None:
     if not raw:
         return None
-    parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    normalized = raw.strip().replace("Z", "+00:00")
+    if "T" not in normalized:
+        parsed_date = dt.date.fromisoformat(normalized)
+        if end_of_day_for_date_only:
+            return dt.datetime(parsed_date.year, parsed_date.month, parsed_date.day, 23, 59, 59, tzinfo=dt.timezone.utc)
+        return dt.datetime(parsed_date.year, parsed_date.month, parsed_date.day, 0, 0, 0, tzinfo=dt.timezone.utc)
+    parsed = dt.datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=dt.timezone.utc)
     return parsed.astimezone(dt.timezone.utc)
 
 
+def _start_of_month(moment: dt.datetime) -> dt.datetime:
+    return moment.astimezone(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
 def _end_of_last_month(now: dt.datetime) -> dt.datetime:
-    month_start = now.astimezone(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return month_start - dt.timedelta(seconds=1)
+    return _start_of_month(now) - dt.timedelta(seconds=1)
 
 
-def _compute_project_balance(project_id: str, as_of: dt.datetime) -> dict:
-    payments_client = OpenSearchClient(debug=DEBUG_MODE)
-    month_start = as_of.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    costs_total = _get_costs_total(project_id, month_start, as_of)
-
-    payments_totals = payments_client.get_total_paid(project_id, paid_before=as_of.isoformat())
-    payments_total = float(payments_totals.get("aggregations", {}).get("total_paid", {}).get("value", 0.0) or 0.0)
-
-    balance = float(costs_total) - payments_total
-    return {
-        "_index": "project-balances",
-        "_id": project_id,
-        "found": True,
-        "_source": {
-            "project_id": project_id,
-            "currency": get_default_currency(),
-            "costs_total": float(costs_total),
-            "payments_total": payments_total,
-            "balance": balance,
-            "paid_total": payments_total,
-            "refunded_total": float(costs_total),
-            "net_paid": -balance,
-            "updated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
-            "as_of_date": as_of.isoformat(),
-        },
-    }
+def _is_within_inclusive(value: dt.datetime, start: dt.datetime, end: dt.datetime) -> bool:
+    return start <= value <= end
 
 
 def _get_costs_total(project_id: str, start: dt.datetime, end: dt.datetime) -> float:
@@ -94,6 +80,90 @@ def _get_costs_total(project_id: str, start: dt.datetime, end: dt.datetime) -> f
         raise CostsServiceError(f"costs service unavailable: {reason}") from exc
 
     return float(payload.get("aggregate_cost_now", 0.0) or 0.0)
+
+
+def _get_customer_onboarding_start(project_id: str, fallback_now: dt.datetime) -> dt.datetime:
+    url = f"{COSTS_SERVICE_URL}/api/projects/{parse.quote(project_id)}/costs/monthly"
+    req = request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with request.urlopen(req) as resp:
+            payload = json.loads(resp.read().decode("utf-8") or "{}")
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        if exc.code == 404:
+            try:
+                payload = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                payload = {}
+            raise CostsServiceProjectNotFoundError(payload.get("error") or f"Project '{project_id}' was not found") from exc
+        raise CostsServiceError(f"costs service returned {exc.code}: {body or exc.reason}") from exc
+    except error.URLError as exc:
+        reason = getattr(exc, "reason", str(exc))
+        raise CostsServiceError(f"costs service unavailable: {reason}") from exc
+
+    start = _parse_iso_date_or_datetime(payload.get("start"))
+    return _start_of_month(start or fallback_now)
+
+
+def _fetch_invoices(project_id: str) -> list[dict]:
+    url = f"{DOCUMENT_GENERATOR_SERVICE_URL}/api/projects/{parse.quote(project_id)}/invoices"
+    req = request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with request.urlopen(req) as resp:
+            payload = json.loads(resp.read().decode("utf-8") or "{}")
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        raise CostsServiceError(f"document service returned {exc.code}: {body or exc.reason}") from exc
+    except error.URLError as exc:
+        reason = getattr(exc, "reason", str(exc))
+        raise CostsServiceError(f"document service unavailable: {reason}") from exc
+
+    invoices = payload.get("invoices", [])
+    return invoices if isinstance(invoices, list) else []
+
+
+def _compute_project_balance(project_id: str, costs_from: dt.datetime, costs_to: dt.datetime, payments_from: dt.datetime, payments_to: dt.datetime) -> dict:
+    payments_client = OpenSearchClient(debug=DEBUG_MODE)
+    costs_total = _get_costs_total(project_id, costs_from, costs_to)
+
+    payments_totals = payments_client.get_total_paid_in_range(project_id, created_from=payments_from.isoformat(), created_to=payments_to.isoformat())
+    payments_total = float(payments_totals.get("aggregations", {}).get("total_paid", {}).get("value", 0.0) or 0.0)
+
+    invoices_in_range: list[dict] = []
+    for invoice in _fetch_invoices(project_id):
+        created_at = _parse_iso_date_or_datetime(invoice.get("created_at"))
+        if created_at and _is_within_inclusive(created_at, costs_from, costs_to):
+            invoices_in_range.append(invoice)
+    invoices_total = sum(float(inv.get("amount_due", 0.0) or 0.0) for inv in invoices_in_range)
+
+    payments_in_range = payments_client.list_payments_created_in_range(project_id, created_from=payments_from.isoformat(), created_to=payments_to.isoformat())
+    payments_created_total = sum(float(item.get("amount", 0.0) or 0.0) for item in payments_in_range)
+
+    balance = float(costs_total) - payments_total
+    return {
+        "_index": "project-balances",
+        "_id": project_id,
+        "found": True,
+        "_source": {
+            "project_id": project_id,
+            "currency": get_default_currency(),
+            "costs_total": float(costs_total),
+            "payments_total": payments_total,
+            "balance": balance,
+            "paid_total": payments_total,
+            "refunded_total": float(costs_total),
+            "net_paid": -balance,
+            "updated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
+            "costs_from_date": costs_from.isoformat(),
+            "costs_to_date": costs_to.isoformat(),
+            "payments_from_date": payments_from.isoformat(),
+            "payments_to_date": payments_to.isoformat(),
+            "invoices_in_costs_range": invoices_in_range,
+            "invoices_in_costs_range_total": invoices_total,
+            "payments_in_payments_range": payments_in_range,
+            "payments_in_payments_range_total": payments_created_total,
+        },
+    }
 
 
 class PaymentsHandler(BaseHTTPRequestHandler):
@@ -147,14 +217,31 @@ class PaymentsHandler(BaseHTTPRequestHandler):
             if len(parts) == 6 and parts[5] == "total-paid":
                 return self._json(client.get_total_paid(project_id))
             if len(parts) == 6 and parts[5] == "balance":
+                now = dt.datetime.now(dt.timezone.utc)
+                raw_costs_from = query.get("costs_from_date", [None])[0]
+                raw_costs_to = query.get("costs_to_date", [None])[0]
+                raw_payments_from = query.get("payments_from_date", [None])[0]
+                raw_payments_to = query.get("payments_to_date", [None])[0]
                 raw_as_of = query.get("as_of_date", [None])[0]
                 try:
-                    as_of = _parse_as_of_date(raw_as_of)
+                    costs_from = _parse_iso_date_or_datetime(raw_costs_from)
+                    costs_to = _parse_iso_date_or_datetime(raw_costs_to, end_of_day_for_date_only=True)
+                    payments_from = _parse_iso_date_or_datetime(raw_payments_from)
+                    payments_to = _parse_iso_date_or_datetime(raw_payments_to, end_of_day_for_date_only=True)
+                    as_of = _parse_iso_date_or_datetime(raw_as_of, end_of_day_for_date_only=True)
                 except ValueError:
-                    return self._json({"error": "as_of_date must be an ISO8601 datetime"}, status=400)
-                effective_as_of = as_of or _end_of_last_month(dt.datetime.now(dt.timezone.utc))
+                    return self._json({"error": "date values must be ISO8601 date or datetime (e.g. 2026-01-01 or 2026-01-01T12:00:00Z)"}, status=400)
                 try:
-                    return self._json(_compute_project_balance(project_id, effective_as_of))
+                    onboarding_start = _get_customer_onboarding_start(project_id, now)
+                    effective_costs_from = costs_from or (_start_of_month(as_of) if as_of else onboarding_start)
+                    effective_costs_to = costs_to or as_of or _end_of_last_month(now)
+                    effective_payments_from = payments_from or onboarding_start
+                    effective_payments_to = payments_to or as_of or now
+                    if effective_costs_from > effective_costs_to:
+                        return self._json({"error": "costs_from_date must be before or equal to costs_to_date"}, status=400)
+                    if effective_payments_from > effective_payments_to:
+                        return self._json({"error": "payments_from_date must be before or equal to payments_to_date"}, status=400)
+                    return self._json(_compute_project_balance(project_id, effective_costs_from, effective_costs_to, effective_payments_from, effective_payments_to))
                 except CostsServiceProjectNotFoundError as exc:
                     return self._json({"error": str(exc)}, status=404)
                 except CostsServiceError as exc:
@@ -248,8 +335,13 @@ def run() -> None:
     print_env_resolution("COSTS_SERVICE_URL", costs_service_url, costs_service_defaulted)
     validate_http_endpoint("COSTS_SERVICE_URL", costs_service_url, health_path="/healthz")
 
-    global COSTS_SERVICE_URL
+    document_service_url, document_service_defaulted = describe_env("DOCUMENT_GENERATOR_SERVICE_URL", default="http://localhost:8084")
+    print_env_resolution("DOCUMENT_GENERATOR_SERVICE_URL", document_service_url, document_service_defaulted)
+    validate_http_endpoint("DOCUMENT_GENERATOR_SERVICE_URL", document_service_url, health_path="/healthz")
+
+    global COSTS_SERVICE_URL, DOCUMENT_GENERATOR_SERVICE_URL
     COSTS_SERVICE_URL = costs_service_url.rstrip("/")
+    DOCUMENT_GENERATOR_SERVICE_URL = document_service_url.rstrip("/")
 
     os_verify, os_verify_defaulted = describe_env("OS_VERIFY")
     print_env_resolution("OS_VERIFY", os_verify, os_verify_defaulted)
