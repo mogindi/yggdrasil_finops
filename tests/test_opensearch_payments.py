@@ -220,6 +220,18 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertEqual(payload["_source"]["project_id"], "proj-123")
         self.assertEqual(payload["_source"]["balance"], 0.0)
 
+    def test_get_balance_returns_default_payload_when_404_is_only_in_message(self):
+        client = OpenSearchClient()
+        missing_exc = OpenSearchApiError(
+            "OpenSearch request failed (404) method=GET url=http://opensearch:9200/project-balances/_doc/proj-123: Not Found",
+        )
+        with patch.object(client, "_http_json", side_effect=missing_exc):
+            payload = client.get_balance("proj-123")
+
+        self.assertFalse(payload["found"])
+        self.assertEqual(payload["_source"]["project_id"], "proj-123")
+        self.assertEqual(payload["_source"]["balance"], 0.0)
+
     def test_search_project_payments_returns_empty_when_index_missing(self):
         client = OpenSearchClient()
         missing_exc = OpenSearchApiError(
