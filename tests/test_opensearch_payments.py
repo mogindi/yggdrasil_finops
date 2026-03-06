@@ -114,8 +114,46 @@ class OpenSearchPaymentsTests(unittest.TestCase):
             client.create_payments_template()
 
         body = http_mock.call_args.args[2]
+        method_mapping = body["template"]["mappings"]["properties"]["method"]
         metadata_mapping = body["template"]["mappings"]["properties"]["metadata"]
+        self.assertEqual(method_mapping, {"type": "keyword"})
         self.assertEqual(metadata_mapping, {"type": "object", "enabled": False})
+
+
+    def test_upsert_payment_event_backfills_method_mapping_on_strict_mapping_error(self):
+        client = OpenSearchClient()
+        dynamic_exc = OpenSearchApiError(
+            "OpenSearch request failed (400) method=PUT url=http://opensearch:9200/payments-project-proj-123/_doc/evt_1: "
+            "mapping set to strict, dynamic introduction of [method] within [_doc] is not allowed",
+            status_code=400,
+        )
+        with patch.object(
+            client,
+            "_http_json",
+            side_effect=[dynamic_exc, {"acknowledged": True}, {"result": "created"}],
+        ) as http_mock:
+            payload = client.upsert_payment_event("project:proj-123", "evt_1", {"method": "card"})
+
+        self.assertEqual(payload["result"], "created")
+        self.assertEqual(http_mock.call_args_list[1].args[1], "/payments-project-proj-123/_mapping")
+
+    def test_bulk_payment_events_backfills_method_mapping_on_strict_mapping_error(self):
+        client = OpenSearchClient()
+        dynamic_exc = OpenSearchApiError(
+            "OpenSearch bulk request failed (400) method=POST url=http://opensearch:9200/_bulk: "
+            "mapping set to strict, dynamic introduction of [method] within [_doc] is not allowed",
+            status_code=400,
+        )
+        with patch.object(client, "_http_ndjson", side_effect=[dynamic_exc, {"errors": False}]) as ndjson_mock, patch.object(
+            client,
+            "_http_json",
+            return_value={"acknowledged": True},
+        ) as http_mock:
+            payload = client.bulk_payment_events([{"event_id": "evt_1", "method": "card"}], "project:proj-123")
+
+        self.assertEqual(payload["errors"], False)
+        self.assertEqual(http_mock.call_args.args[1], "/payments-project-proj-123/_mapping")
+        self.assertEqual(ndjson_mock.call_count, 2)
 
     def test_create_payments_index_uses_project_partition_name(self):
         client = OpenSearchClient()
