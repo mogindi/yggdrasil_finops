@@ -149,6 +149,7 @@ class OpenSearchClient:
                         "currency": {"type": "keyword"},
                         "amount": {"type": "scaled_float", "scaling_factor": 100},
                         "direction": {"type": "keyword"},
+                        "method": {"type": "keyword"},
                         "status": {"type": "keyword"},
                         "paid_at": {"type": "date"},
                         "ingested_at": {"type": "date"},
@@ -196,9 +197,20 @@ class OpenSearchClient:
                 return {"acknowledged": True, "already_exists": True, "index": "project-balances"}
             raise
 
+    def _ensure_payments_method_mapping(self, partition: str) -> dict[str, Any]:
+        index_name = self._payments_index_name(partition)
+        body = {"properties": {"method": {"type": "keyword"}}}
+        return self._http_json("PUT", f"/{index_name}/_mapping", body)
+
     def upsert_payment_event(self, partition: str, event_id: str, document: dict[str, Any]) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
-        return self._http_json("PUT", f"/{index_name}/_doc/{parse.quote(event_id)}", document)
+        try:
+            return self._http_json("PUT", f"/{index_name}/_doc/{parse.quote(event_id)}", document)
+        except OpenSearchApiError as exc:
+            if "dynamic introduction of [method]" not in str(exc):
+                raise
+            self._ensure_payments_method_mapping(partition)
+            return self._http_json("PUT", f"/{index_name}/_doc/{parse.quote(event_id)}", document)
 
     def bulk_payment_events(self, events: list[dict[str, Any]], partition: str) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
@@ -206,7 +218,13 @@ class OpenSearchClient:
             event_id = event.get("event_id")
             rows.append({"index": {"_index": self._payments_index_name(partition), "_id": event_id}})
             rows.append(event)
-        return self._http_ndjson("/_bulk", rows)
+        try:
+            return self._http_ndjson("/_bulk", rows)
+        except OpenSearchApiError as exc:
+            if "dynamic introduction of [method]" not in str(exc):
+                raise
+            self._ensure_payments_method_mapping(partition)
+            return self._http_ndjson("/_bulk", rows)
 
     def get_payment_event(self, partition: str, event_id: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
