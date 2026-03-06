@@ -299,7 +299,7 @@ class OpenSearchClient:
                     "filter": [
                         {"term": {"project_id": project_id}},
                         {"term": {"invoice_id": invoice_id}},
-                        {"term": {"status": "succeeded"}},
+                        {"terms": {"status": ["succeeded", "captured"]}},
                     ]
                 }
             },
@@ -316,8 +316,8 @@ class OpenSearchClient:
     def get_total_paid(self, project_id: str, paid_before: str | None = None) -> dict[str, Any]:
         filters: list[dict[str, Any]] = [
             {"term": {"project_id": project_id}},
-            {"term": {"status": "succeeded"}},
-            {"term": {"direction": "in"}},
+            {"terms": {"status": ["succeeded", "captured"]}},
+            {"terms": {"direction": ["in", "inbound"]}},
         ]
         if paid_before:
             filters.append({"range": {"paid_at": {"lt": paid_before}}})
