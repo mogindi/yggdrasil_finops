@@ -80,4 +80,5 @@ services:
     environment:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
       OS_VERIFY: ${OS_VERIFY:-true}
+      CLOUDKITTY_CURRENCY: ${CLOUDKITTY_CURRENCY:-DKK}
       DEBUG: ${DEBUG:-false}
