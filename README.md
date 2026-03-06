@@ -548,6 +548,8 @@ curl -X PUT "http://localhost:8082/api/projects/proj_123/payments/balance" \
 
 ```bash
 curl "http://localhost:8082/api/projects/proj_123/payments/balance"
+# Optional as-of date
+curl "http://localhost:8082/api/projects/proj_123/payments/balance?as_of_date=2026-02-01T00:00:00Z"
 ```
 
 
@@ -583,7 +585,9 @@ The service now exposes OpenSearch-backed payment endpoints under `/api/projects
 - `PUT /api/projects/<PROJECT_ID>/payments/balance`
   - Upserts a current balance doc (`paid_total`, `refunded_total`, `net_paid`, `currency`).
 - `GET /api/projects/<PROJECT_ID>/payments/balance`
-  - Reads current balance doc.
+  - Calculates balance as `costs_total - payments_total` at a point in time.
+  - Optional query param: `as_of_date=<ISO8601 datetime>` to calculate costs until that timestamp and payments strictly before that timestamp.
+  - Without `as_of_date`, defaults to end of last month.
 - `GET /api/projects/<PROJECT_ID>/payments/mapping`
 - `GET /api/projects/<PROJECT_ID>/payments/settings`
 - `POST /api/projects/<PROJECT_ID>/payments/refresh`

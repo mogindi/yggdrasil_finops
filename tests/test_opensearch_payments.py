@@ -258,6 +258,17 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertEqual(payload["index"], "payments-project-proj-123")
         self.assertEqual(payload["mappings"], {})
 
+    def test_get_total_paid_accepts_paid_before_filter(self):
+        client = OpenSearchClient()
+        with patch.object(client, "_http_json", return_value={"aggregations": {"total_paid": {"value": 10.0}}}) as http_mock:
+            client.get_total_paid("proj-123", paid_before="2026-02-01T00:00:00+00:00")
+
+        self.assertEqual(http_mock.call_args.args[0], "GET")
+        self.assertEqual(http_mock.call_args.args[1], "/payments-*/_search")
+        payload = http_mock.call_args.args[2]
+        filters = payload["query"]["bool"]["filter"]
+        self.assertIn({"range": {"paid_at": {"lt": "2026-02-01T00:00:00+00:00"}}}, filters)
+
     def test_upsert_balance_computes_cost_minus_payments(self):
         client = OpenSearchClient()
         with patch.object(client, "_http_json", return_value={"result": "updated"}) as http_mock:
