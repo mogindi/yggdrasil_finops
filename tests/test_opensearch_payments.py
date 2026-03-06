@@ -267,7 +267,18 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertEqual(http_mock.call_args.args[1], "/payments-*/_search")
         payload = http_mock.call_args.args[2]
         filters = payload["query"]["bool"]["filter"]
+        self.assertIn({"terms": {"status": ["succeeded", "captured"]}}, filters)
+        self.assertIn({"terms": {"direction": ["in", "inbound"]}}, filters)
         self.assertIn({"range": {"paid_at": {"lt": "2026-02-01T00:00:00+00:00"}}}, filters)
+
+    def test_search_project_invoice_payments_includes_captured_status(self):
+        client = OpenSearchClient()
+        with patch.object(client, "_http_json", return_value={"hits": {"hits": []}}) as http_mock:
+            client.search_project_invoice_payments("proj-123", "inv-123")
+
+        payload = http_mock.call_args.args[2]
+        filters = payload["query"]["bool"]["filter"]
+        self.assertIn({"terms": {"status": ["succeeded", "captured"]}}, filters)
 
     def test_upsert_balance_computes_cost_minus_payments(self):
         client = OpenSearchClient()
