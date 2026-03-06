@@ -127,6 +127,13 @@ class OpenSearchClient:
         has_root_cause = any(cause.get("type") == "resource_already_exists_exception" for cause in root_causes)
         return err_type == "resource_already_exists_exception" or has_root_cause
 
+    @staticmethod
+    def _is_missing_index(exc: OpenSearchApiError) -> bool:
+        if exc.status_code != 404:
+            return False
+        haystack = f"{exc} {exc.body or ''}".lower()
+        return "no such index" in haystack or "index_not_found_exception" in haystack
+
 
 
     @staticmethod
@@ -241,7 +248,12 @@ class OpenSearchClient:
 
     def get_payment_event(self, partition: str, event_id: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
-        return self._http_json("GET", f"/{index_name}/_doc/{parse.quote(event_id)}")
+        try:
+            return self._http_json("GET", f"/{index_name}/_doc/{parse.quote(event_id)}")
+        except OpenSearchApiError as exc:
+            if exc.status_code == 404:
+                return {"_index": index_name, "_id": event_id, "found": False}
+            raise
 
     def search_project_payments(self, project_id: str, size: int = 25) -> dict[str, Any]:
         body = {
@@ -249,7 +261,12 @@ class OpenSearchClient:
             "sort": [{"paid_at": "desc"}],
             "size": size,
         }
-        return self._http_json("GET", "/payments-*/_search", body)
+        try:
+            return self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"hits": {"hits": [], "total": {"value": 0, "relation": "eq"}}}
+            raise
 
     def search_project_invoice_payments(self, project_id: str, invoice_id: str, size: int = 100) -> dict[str, Any]:
         body = {
@@ -265,7 +282,12 @@ class OpenSearchClient:
             "sort": [{"paid_at": "asc"}],
             "size": size,
         }
-        return self._http_json("GET", "/payments-*/_search", body)
+        try:
+            return self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"hits": {"hits": [], "total": {"value": 0, "relation": "eq"}}}
+            raise
 
     def get_total_paid(self, project_id: str) -> dict[str, Any]:
         body = {
@@ -281,7 +303,12 @@ class OpenSearchClient:
             },
             "aggs": {"total_paid": {"sum": {"field": "amount"}}},
         }
-        return self._http_json("GET", "/payments-*/_search", body)
+        try:
+            return self._http_json("GET", "/payments-*/_search", body)
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"hits": {"total": {"value": 0, "relation": "eq"}}, "aggregations": {"total_paid": {"value": 0.0}}}
+            raise
 
     def upsert_balance(self, project_id: str, currency: str, costs_total: float, payments_total: float) -> dict[str, Any]:
         balance = float(costs_total) - float(payments_total)
@@ -303,16 +330,50 @@ class OpenSearchClient:
         return self._http_json("POST", f"/project-balances/_update/{parse.quote(project_id)}", body)
 
     def get_balance(self, project_id: str) -> dict[str, Any]:
-        return self._http_json("GET", f"/project-balances/_doc/{parse.quote(project_id)}")
+        try:
+            return self._http_json("GET", f"/project-balances/_doc/{parse.quote(project_id)}")
+        except OpenSearchApiError as exc:
+            if exc.status_code == 404:
+                return {
+                    "_index": "project-balances",
+                    "_id": project_id,
+                    "found": False,
+                    "_source": {
+                        "project_id": project_id,
+                        "currency": "",
+                        "costs_total": 0.0,
+                        "payments_total": 0.0,
+                        "balance": 0.0,
+                        "paid_total": 0.0,
+                        "refunded_total": 0.0,
+                        "net_paid": 0.0,
+                    },
+                }
+            raise
 
     def get_index_mapping(self, partition: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
-        return self._http_json("GET", f"/{index_name}/_mapping")
+        try:
+            return self._http_json("GET", f"/{index_name}/_mapping")
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"index": index_name, "found": False, "mappings": {}}
+            raise
 
     def get_index_settings(self, partition: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
-        return self._http_json("GET", f"/{index_name}/_settings")
+        try:
+            return self._http_json("GET", f"/{index_name}/_settings")
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"index": index_name, "found": False, "settings": {}}
+            raise
 
     def refresh_index(self, partition: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
-        return self._http_json("POST", f"/{index_name}/_refresh")
+        try:
+            return self._http_json("POST", f"/{index_name}/_refresh")
+        except OpenSearchApiError as exc:
+            if self._is_missing_index(exc):
+                return {"_shards": {"total": 0, "successful": 0, "failed": 0}, "index": index_name, "found": False}
+            raise
