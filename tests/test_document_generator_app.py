@@ -11,6 +11,16 @@ os.environ.setdefault("CLOUDKITTY_CURRENCY", "USD")
 
 
 class DocumentGeneratorLogoRequirementTests(unittest.TestCase):
+    def setUp(self):
+        self._original_logo_path = os.environ.get("LOGO_PATH")
+        os.environ.pop("LOGO_PATH", None)
+
+    def tearDown(self):
+        if self._original_logo_path is None:
+            os.environ.pop("LOGO_PATH", None)
+        else:
+            os.environ["LOGO_PATH"] = self._original_logo_path
+
     def _request(self, method, path, body=None):
         server = ThreadingHTTPServer(("127.0.0.1", 0), document_generator_app.DocumentGeneratorHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -31,8 +41,8 @@ class DocumentGeneratorLogoRequirementTests(unittest.TestCase):
 
     def test_invoice_file_requires_logo_path(self):
         status, body = self._request("GET", "/api/projects/proj-1/invoices/inv_1/file")
-        self.assertEqual(status, 400)
-        self.assertIn("logo_path", body["error"])
+        self.assertEqual(status, 500)
+        self.assertIn("LOGO_PATH", body["error"])
 
     def test_delete_invoice_endpoint(self):
         status, created = self._request(

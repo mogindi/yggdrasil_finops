@@ -25,7 +25,7 @@ Simple Python service/UI for reading CloudKitty project costs from OpenStack.
 - `POST /api/projects/<project_id>/receipts`
   - Creates a receipt after payment and updates invoice status (`open` → `partially_paid`/`paid`).
 - `GET /api/projects/<project_id>/invoices/<invoice_id>/file`
-  - Generates a PDF invoice (optional `logo_path`), can return inline PDF, downloadable attachment, or HTML preview (`view=html`).
+  - Generates a PDF invoice using `LOGO_PATH` from service environment, can return inline PDF, downloadable attachment, or HTML preview (`view=html`).
   - Optional `send_email=true` sends the generated PDF using Brevo API.
 - `GET /api/projects/<project_id>/receipts/<receipt_id>/file`
   - Generates a PDF receipt with the same preview/download/email options.
@@ -170,6 +170,8 @@ The services print a startup summary showing each relevant variable, whether it 
   - `BREVO_SENDER_NAME` (default: `Yggdrasil FinOps`)
 - **Conditionally required:**
   - `BREVO_API_KEY` is only required when calling invoice/receipt file endpoints with `send_email=true` (or CLI `--send-email`).
+- **Required for PDF generation:**
+  - `LOGO_PATH` must point to a readable JPEG/PNG logo file inside the container.
 
 ## Microservice deployment (Docker Compose)
 
@@ -327,10 +329,10 @@ PDF commands in CLI:
 
 ```bash
 # generate + download invoice PDF
-python yggdrasil_finops invoice file   --project-id proj_123   --invoice-id inv_001   --logo-path ./logo.jpg   --download-path ./inv_001.pdf
+python yggdrasil_finops invoice file   --project-id proj_123   --invoice-id inv_001   --download-path ./inv_001.pdf
 
 # without --download-path, CLI prints JSON metadata + preview hex only (PDF is not written to disk)
-python yggdrasil_finops invoice file --project-id proj_123 --invoice-id inv_001 --logo-path ./logo.jpg
+python yggdrasil_finops invoice file --project-id proj_123 --invoice-id inv_001
 
 # show invoice PDF as HTML (for browser rendering)
 python yggdrasil_finops invoice file --project-id proj_123 --invoice-id inv_001 --html
