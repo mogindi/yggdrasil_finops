@@ -115,8 +115,10 @@ class OpenSearchPaymentsTests(unittest.TestCase):
 
         body = http_mock.call_args.args[2]
         method_mapping = body["template"]["mappings"]["properties"]["method"]
+        reference_mapping = body["template"]["mappings"]["properties"]["reference"]
         metadata_mapping = body["template"]["mappings"]["properties"]["metadata"]
         self.assertEqual(method_mapping, {"type": "keyword"})
+        self.assertEqual(reference_mapping, {"type": "keyword"})
         self.assertEqual(metadata_mapping, {"type": "object", "enabled": False})
 
 
@@ -136,6 +138,7 @@ class OpenSearchPaymentsTests(unittest.TestCase):
 
         self.assertEqual(payload["result"], "created")
         self.assertEqual(http_mock.call_args_list[1].args[1], "/payments-project-proj-123/_mapping")
+        self.assertEqual(http_mock.call_args_list[1].args[2], {"properties": {"method": {"type": "keyword"}}})
 
     def test_bulk_payment_events_backfills_method_mapping_on_strict_mapping_error(self):
         client = OpenSearchClient()
@@ -154,6 +157,25 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertEqual(payload["errors"], False)
         self.assertEqual(http_mock.call_args.args[1], "/payments-project-proj-123/_mapping")
         self.assertEqual(ndjson_mock.call_count, 2)
+
+    def test_upsert_payment_event_backfills_reference_mapping_on_strict_mapping_error(self):
+        client = OpenSearchClient()
+        dynamic_exc = OpenSearchApiError(
+            "OpenSearch request failed (400) method=PUT url=http://opensearch:9200/payments-project-proj-123/_doc/evt_1: "
+            "mapping set to strict, dynamic introduction of [reference] within [_doc] is not allowed",
+            status_code=400,
+        )
+        with patch.object(
+            client,
+            "_http_json",
+            side_effect=[dynamic_exc, {"acknowledged": True}, {"result": "created"}],
+        ) as http_mock:
+            payload = client.upsert_payment_event("project:proj-123", "evt_1", {"reference": "wire-001"})
+
+        self.assertEqual(payload["result"], "created")
+        self.assertEqual(http_mock.call_args_list[1].args[1], "/payments-project-proj-123/_mapping")
+        self.assertEqual(http_mock.call_args_list[1].args[2], {"properties": {"reference": {"type": "keyword"}}})
+
 
     def test_create_payments_index_uses_project_partition_name(self):
         client = OpenSearchClient()

@@ -2,6 +2,7 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import ssl
 from typing import Any
 from urllib import parse, request
@@ -21,6 +22,8 @@ class OpenSearchApiError(OpenSearchError):
 
 
 class OpenSearchClient:
+    _PAYMENTS_DYNAMIC_KEYWORD_FIELDS = {"method", "reference"}
+
     def __init__(self, debug: bool = False) -> None:
         self.endpoint = os.environ["OPENSEARCH_URL"].rstrip("/")
         self.verify = os.environ["OS_VERIFY"].lower() not in {"0", "false", "no"}
@@ -150,6 +153,7 @@ class OpenSearchClient:
                         "amount": {"type": "scaled_float", "scaling_factor": 100},
                         "direction": {"type": "keyword"},
                         "method": {"type": "keyword"},
+                        "reference": {"type": "keyword"},
                         "status": {"type": "keyword"},
                         "paid_at": {"type": "date"},
                         "ingested_at": {"type": "date"},
@@ -197,9 +201,16 @@ class OpenSearchClient:
                 return {"acknowledged": True, "already_exists": True, "index": "project-balances"}
             raise
 
-    def _ensure_payments_method_mapping(self, partition: str) -> dict[str, Any]:
+    @staticmethod
+    def _extract_strict_dynamic_field(exc: OpenSearchApiError) -> str | None:
+        match = re.search(r"dynamic introduction of \[([^\]]+)\]", str(exc))
+        if not match:
+            return None
+        return match.group(1)
+
+    def _ensure_payments_keyword_mapping(self, partition: str, field: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
-        body = {"properties": {"method": {"type": "keyword"}}}
+        body = {"properties": {field: {"type": "keyword"}}}
         return self._http_json("PUT", f"/{index_name}/_mapping", body)
 
     def upsert_payment_event(self, partition: str, event_id: str, document: dict[str, Any]) -> dict[str, Any]:
@@ -207,9 +218,10 @@ class OpenSearchClient:
         try:
             return self._http_json("PUT", f"/{index_name}/_doc/{parse.quote(event_id)}", document)
         except OpenSearchApiError as exc:
-            if "dynamic introduction of [method]" not in str(exc):
+            field = self._extract_strict_dynamic_field(exc)
+            if field not in self._PAYMENTS_DYNAMIC_KEYWORD_FIELDS:
                 raise
-            self._ensure_payments_method_mapping(partition)
+            self._ensure_payments_keyword_mapping(partition, field)
             return self._http_json("PUT", f"/{index_name}/_doc/{parse.quote(event_id)}", document)
 
     def bulk_payment_events(self, events: list[dict[str, Any]], partition: str) -> dict[str, Any]:
@@ -221,9 +233,10 @@ class OpenSearchClient:
         try:
             return self._http_ndjson("/_bulk", rows)
         except OpenSearchApiError as exc:
-            if "dynamic introduction of [method]" not in str(exc):
+            field = self._extract_strict_dynamic_field(exc)
+            if field not in self._PAYMENTS_DYNAMIC_KEYWORD_FIELDS:
                 raise
-            self._ensure_payments_method_mapping(partition)
+            self._ensure_payments_keyword_mapping(partition, field)
             return self._http_ndjson("/_bulk", rows)
 
     def get_payment_event(self, partition: str, event_id: str) -> dict[str, Any]:
