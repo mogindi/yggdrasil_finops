@@ -309,18 +309,18 @@ class OpenSearchClient:
                 return {"hits": {"hits": [], "total": {"value": 0, "relation": "eq"}}}
             raise
 
-    def get_total_paid(self, project_id: str) -> dict[str, Any]:
+    def get_total_paid(self, project_id: str, paid_before: str | None = None) -> dict[str, Any]:
+        filters: list[dict[str, Any]] = [
+            {"term": {"project_id": project_id}},
+            {"term": {"status": "succeeded"}},
+            {"term": {"direction": "in"}},
+        ]
+        if paid_before:
+            filters.append({"range": {"paid_at": {"lt": paid_before}}})
+
         body = {
             "size": 0,
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"term": {"project_id": project_id}},
-                        {"term": {"status": "succeeded"}},
-                        {"term": {"direction": "in"}},
-                    ]
-                }
-            },
+            "query": {"bool": {"filter": filters}},
             "aggs": {"total_paid": {"sum": {"field": "amount"}}},
         }
         try:

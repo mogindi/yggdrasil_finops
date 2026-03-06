@@ -174,6 +174,22 @@ class CliWrapperTests(unittest.TestCase):
         self.assertEqual(req.method, "GET")
         self.assertTrue(req.full_url.endswith("/api/projects/proj_123/payments/balance"))
 
+
+    def test_payment_balance_get_with_as_of_date_adds_query_string(self):
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"found": True})) as mocked:
+            rc = yggdrasil_finops.main([
+                "payment",
+                "balance",
+                "--project-id",
+                "proj_123",
+                "--as-of-date",
+                "2026-02-01T00:00:00Z",
+            ])
+        self.assertEqual(rc, 0)
+        req = mocked.call_args.args[0]
+        self.assertEqual(req.method, "GET")
+        self.assertTrue(req.full_url.endswith("/api/projects/proj_123/payments/balance?as_of_date=2026-02-01T00%3A00%3A00Z"))
+
     def test_payment_set_balance_puts_costs_and_payments_totals(self):
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"result": "updated"})) as mocked:
             rc = yggdrasil_finops.main([

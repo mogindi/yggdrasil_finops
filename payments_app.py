@@ -9,6 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
+from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
+from currency import get_default_currency
 from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 
@@ -18,6 +20,52 @@ LOGGER = logging.getLogger("payments_app")
 
 def _payments_partition(project_id: str) -> str:
     return f"project:{project_id}"
+
+
+def _parse_as_of_date(raw: str | None) -> dt.datetime | None:
+    if not raw:
+        return None
+    parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def _end_of_last_month(now: dt.datetime) -> dt.datetime:
+    month_start = now.astimezone(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return month_start - dt.timedelta(seconds=1)
+
+
+def _compute_project_balance(project_id: str, as_of: dt.datetime) -> dict:
+    costs_client = CloudKittyClient(debug=DEBUG_MODE)
+    payments_client = OpenSearchClient(debug=DEBUG_MODE)
+
+    costs_client.ensure_project_exists(project_id)
+    project_created_at = costs_client.get_project_created_at(project_id)
+    start = (project_created_at or as_of).astimezone(dt.timezone.utc)
+    costs_total = costs_client.get_project_aggregate_for_range(project_id, start, as_of)
+
+    payments_totals = payments_client.get_total_paid(project_id, paid_before=as_of.isoformat())
+    payments_total = float(payments_totals.get("aggregations", {}).get("total_paid", {}).get("value", 0.0) or 0.0)
+
+    balance = float(costs_total) - payments_total
+    return {
+        "_index": "project-balances",
+        "_id": project_id,
+        "found": True,
+        "_source": {
+            "project_id": project_id,
+            "currency": get_default_currency(),
+            "costs_total": float(costs_total),
+            "payments_total": payments_total,
+            "balance": balance,
+            "paid_total": payments_total,
+            "refunded_total": float(costs_total),
+            "net_paid": -balance,
+            "updated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
+            "as_of_date": as_of.isoformat(),
+        },
+    }
 
 
 class PaymentsHandler(BaseHTTPRequestHandler):
@@ -71,7 +119,18 @@ class PaymentsHandler(BaseHTTPRequestHandler):
             if len(parts) == 6 and parts[5] == "total-paid":
                 return self._json(client.get_total_paid(project_id))
             if len(parts) == 6 and parts[5] == "balance":
-                return self._json(client.get_balance(project_id))
+                raw_as_of = query.get("as_of_date", [None])[0]
+                try:
+                    as_of = _parse_as_of_date(raw_as_of)
+                except ValueError:
+                    return self._json({"error": "as_of_date must be an ISO8601 datetime"}, status=400)
+                effective_as_of = as_of or _end_of_last_month(dt.datetime.now(dt.timezone.utc))
+                try:
+                    return self._json(_compute_project_balance(project_id, effective_as_of))
+                except ProjectNotFoundError as exc:
+                    return self._json({"error": str(exc)}, status=404)
+                except (OpenStackAuthError, CloudKittyError) as exc:
+                    return self._json({"error": str(exc)}, status=502)
             if len(parts) == 6 and parts[5] == "mapping":
                 return self._json(client.get_index_mapping(partition))
             if len(parts) == 6 and parts[5] == "settings":

@@ -164,6 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     payment_balance_get = payment_sub.add_parser("balance", help="Get project payment balance")
     _add_base_and_project_args(payment_balance_get)
+    payment_balance_get.add_argument("--as-of-date", metavar="DATETIME", help="Optional ISO8601 datetime boundary for balance calculation")
 
     payment_balance_set = payment_sub.add_parser("set-balance", help="Set project payment balance from costs and payments totals")
     _add_base_and_project_args(payment_balance_set)
@@ -320,7 +321,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.resource == "payment" and args.action == "show":
         return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments/events/{args.event_id}"))
     if args.resource == "payment" and args.action == "balance":
-        return _print_response(client.request_json("GET", f"/api/projects/{args.project_id}/payments/balance"))
+        path = f"/api/projects/{args.project_id}/payments/balance"
+        if args.as_of_date:
+            path = f"{path}?{parse.urlencode({'as_of_date': args.as_of_date})}"
+        return _print_response(client.request_json("GET", path))
     if args.resource == "payment" and args.action == "set-balance":
         payload = {
             "currency": args.currency,
