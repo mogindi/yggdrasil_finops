@@ -222,9 +222,13 @@ class OpenSearchClient:
     @staticmethod
     def _extract_strict_dynamic_field(exc: OpenSearchApiError) -> str | None:
         match = re.search(r"dynamic introduction of \[([^\]]+)\]", str(exc))
-        if not match:
-            return None
-        return match.group(1)
+        if match:
+            return match.group(1)
+        if exc.body:
+            match = re.search(r"dynamic introduction of \[([^\]]+)\]", exc.body)
+            if match:
+                return match.group(1)
+        return None
 
     def _ensure_payments_keyword_mapping(self, partition: str, field: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
@@ -347,14 +351,17 @@ class OpenSearchClient:
             },
             "doc_as_upsert": True,
         }
-        try:
-            return self._http_json("POST", f"/project-balances/_update/{parse.quote(project_id)}", body)
-        except OpenSearchApiError as exc:
-            field = self._extract_strict_dynamic_field(exc)
-            if field not in self._BALANCES_DYNAMIC_FIELDS:
-                raise
-            self._http_json("PUT", "/project-balances/_mapping", {"properties": {field: self._BALANCES_DYNAMIC_FIELDS[field]}})
-            return self._http_json("POST", f"/project-balances/_update/{parse.quote(project_id)}", body)
+        update_path = f"/project-balances/_update/{parse.quote(project_id)}"
+        pending_dynamic_fields = set(self._BALANCES_DYNAMIC_FIELDS)
+        while True:
+            try:
+                return self._http_json("POST", update_path, body)
+            except OpenSearchApiError as exc:
+                field = self._extract_strict_dynamic_field(exc)
+                if field not in pending_dynamic_fields:
+                    raise
+                self._http_json("PUT", "/project-balances/_mapping", {"properties": {field: self._BALANCES_DYNAMIC_FIELDS[field]}})
+                pending_dynamic_fields.remove(field)
 
     def get_balance(self, project_id: str) -> dict[str, Any]:
         try:
