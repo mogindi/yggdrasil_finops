@@ -281,6 +281,56 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertEqual(payload["doc"]["payments_total"], 150.0)
         self.assertEqual(payload["doc"]["balance"], -30.0)
 
+
+    def test_upsert_balance_backfills_mapping_on_strict_dynamic_error(self):
+        client = OpenSearchClient()
+        dynamic_exc = OpenSearchApiError(
+            "OpenSearch request failed (400) method=POST url=http://opensearch:9200/project-balances/_update/proj-123: "
+            "mapping set to strict, dynamic introduction of [costs_total] within [_doc] is not allowed",
+            status_code=400,
+        )
+        with patch.object(
+            client,
+            "_http_json",
+            side_effect=[dynamic_exc, {"acknowledged": True}, {"result": "updated"}],
+        ) as http_mock:
+            payload = client.upsert_balance("proj-123", "USD", costs_total=120.0, payments_total=150.0)
+
+        self.assertEqual(payload["result"], "updated")
+        self.assertEqual(http_mock.call_args_list[1].args[0], "PUT")
+        self.assertEqual(http_mock.call_args_list[1].args[1], "/project-balances/_mapping")
+        self.assertEqual(
+            http_mock.call_args_list[1].args[2],
+            {"properties": {"costs_total": {"type": "scaled_float", "scaling_factor": 100}}},
+        )
+
+    def test_search_project_payments_backfills_default_currency(self):
+        client = OpenSearchClient()
+        with patch.object(
+            client,
+            "_http_json",
+            return_value={
+                "hits": {
+                    "hits": [
+                        {"_source": {"event_id": "evt_1"}},
+                        {"_source": {"event_id": "evt_2", "currency": "EUR"}},
+                    ]
+                }
+            },
+        ):
+            payload = client.search_project_payments("proj-123")
+
+        hits = payload["hits"]["hits"]
+        self.assertEqual(hits[0]["_source"]["currency"], "DKK")
+        self.assertEqual(hits[1]["_source"]["currency"], "EUR")
+
+    def test_get_payment_event_backfills_default_currency(self):
+        client = OpenSearchClient()
+        with patch.object(client, "_http_json", return_value={"found": True, "_source": {"event_id": "evt_1"}}):
+            payload = client.get_payment_event("project:proj-123", "evt_1")
+
+        self.assertEqual(payload["_source"]["currency"], "DKK")
+
     def test_put_payment_event_injects_project_id(self):
         FakeOpenSearchClient.upsert_calls = []
         with patch("app.OpenSearchClient", FakeOpenSearchClient), patch("app.CloudKittyClient", FakeCloudKittyClient):

@@ -150,6 +150,7 @@ class PaymentsHandler(BaseHTTPRequestHandler):
                 events = body.get("events", [])
                 for event in events:
                     event["project_id"] = project_id
+                    event.setdefault("currency", "DKK")
                 return self._json(client.bulk_payment_events(events, partition), status=201)
             if len(parts) == 6 and parts[5] == "refresh":
                 return self._json(client.refresh_index(partition))
@@ -164,6 +165,7 @@ class PaymentsHandler(BaseHTTPRequestHandler):
             if len(parts) == 7 and parts[5] == "events":
                 body = self._read_json_body()
                 body["project_id"] = project_id
+                body.setdefault("currency", "DKK")
                 body.setdefault("ingested_at", dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat())
                 return self._json(client.upsert_payment_event(partition, parts[6], body), status=201)
             if len(parts) == 6 and parts[5] == "balance":
@@ -173,7 +175,7 @@ class PaymentsHandler(BaseHTTPRequestHandler):
                 return self._json(
                     client.upsert_balance(
                         project_id,
-                        body.get("currency", get_default_currency()),
+                        body.get("currency", "DKK"),
                         costs_total,
                         payments_total,
                     ),

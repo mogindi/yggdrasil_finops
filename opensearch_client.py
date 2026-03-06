@@ -9,6 +9,7 @@ from urllib import parse, request
 from urllib.error import HTTPError, URLError
 
 
+
 class OpenSearchError(RuntimeError):
     pass
 
@@ -23,6 +24,16 @@ class OpenSearchApiError(OpenSearchError):
 
 class OpenSearchClient:
     _PAYMENTS_DYNAMIC_KEYWORD_FIELDS = {"method", "reference"}
+    _BALANCES_DYNAMIC_FIELDS = {
+        "currency": {"type": "keyword"},
+        "costs_total": {"type": "scaled_float", "scaling_factor": 100},
+        "payments_total": {"type": "scaled_float", "scaling_factor": 100},
+        "balance": {"type": "scaled_float", "scaling_factor": 100},
+        "paid_total": {"type": "scaled_float", "scaling_factor": 100},
+        "refunded_total": {"type": "scaled_float", "scaling_factor": 100},
+        "net_paid": {"type": "scaled_float", "scaling_factor": 100},
+        "updated_at": {"type": "date"},
+    }
 
     def __init__(self, debug: bool = False) -> None:
         self.endpoint = os.environ["OPENSEARCH_URL"].rstrip("/")
@@ -249,7 +260,11 @@ class OpenSearchClient:
     def get_payment_event(self, partition: str, event_id: str) -> dict[str, Any]:
         index_name = self._payments_index_name(partition)
         try:
-            return self._http_json("GET", f"/{index_name}/_doc/{parse.quote(event_id)}")
+            payload = self._http_json("GET", f"/{index_name}/_doc/{parse.quote(event_id)}")
+            source = payload.get("_source")
+            if isinstance(source, dict):
+                source.setdefault("currency", "DKK")
+            return payload
         except OpenSearchApiError as exc:
             if exc.status_code == 404:
                 return {"_index": index_name, "_id": event_id, "found": False}
@@ -262,7 +277,12 @@ class OpenSearchClient:
             "size": size,
         }
         try:
-            return self._http_json("GET", "/payments-*/_search", body)
+            payload = self._http_json("GET", "/payments-*/_search", body)
+            for hit in payload.get("hits", {}).get("hits", []):
+                source = hit.get("_source")
+                if isinstance(source, dict):
+                    source.setdefault("currency", "DKK")
+            return payload
         except OpenSearchApiError as exc:
             if self._is_missing_index(exc):
                 return {"hits": {"hits": [], "total": {"value": 0, "relation": "eq"}}}
@@ -327,7 +347,14 @@ class OpenSearchClient:
             },
             "doc_as_upsert": True,
         }
-        return self._http_json("POST", f"/project-balances/_update/{parse.quote(project_id)}", body)
+        try:
+            return self._http_json("POST", f"/project-balances/_update/{parse.quote(project_id)}", body)
+        except OpenSearchApiError as exc:
+            field = self._extract_strict_dynamic_field(exc)
+            if field not in self._BALANCES_DYNAMIC_FIELDS:
+                raise
+            self._http_json("PUT", "/project-balances/_mapping", {"properties": {field: self._BALANCES_DYNAMIC_FIELDS[field]}})
+            return self._http_json("POST", f"/project-balances/_update/{parse.quote(project_id)}", body)
 
     def get_balance(self, project_id: str) -> dict[str, Any]:
         try:
