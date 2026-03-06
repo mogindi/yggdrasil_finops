@@ -107,10 +107,10 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         return json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
 
-    def _require_logo_path(self, query: dict[str, list[str]]) -> str | None:
-        logo_path = query.get("logo_path", [""])[0].strip()
+    def _require_logo_path(self) -> str | None:
+        logo_path = os.environ.get("LOGO_PATH", "").strip()
         if not logo_path:
-            self._json({"error": "logo_path query parameter is required"}, status=400)
+            self._json({"error": "LOGO_PATH environment variable is required"}, status=500)
             return None
         return logo_path
 
@@ -169,7 +169,7 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
 
     def _project_invoice_file_get(self, project_id: str, invoice_id: str):
         q = parse_qs(urlparse(self.path).query)
-        logo_path = self._require_logo_path(q)
+        logo_path = self._require_logo_path()
         if not logo_path:
             return
         invoice = BILLING_SERVICE.get_invoice(project_id, invoice_id)
@@ -189,7 +189,7 @@ class DocumentGeneratorHandler(BaseHTTPRequestHandler):
 
     def _project_receipt_file_get(self, project_id: str, receipt_id: str):
         q = parse_qs(urlparse(self.path).query)
-        logo_path = self._require_logo_path(q)
+        logo_path = self._require_logo_path()
         if not logo_path:
             return
         receipt = BILLING_SERVICE.get_receipt(project_id, receipt_id)

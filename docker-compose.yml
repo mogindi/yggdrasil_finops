@@ -53,6 +53,7 @@ services:
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Yggdrasil FinOps}
       CLOUDKITTY_CURRENCY: ${CLOUDKITTY_CURRENCY:-DKK}
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://localhost:9200}
+      LOGO_PATH: ${LOGO_PATH:-/volumes/document_generator/logo.jpg}
       OS_VERIFY: ${OS_VERIFY:-true}
       DEBUG: ${DEBUG:-false}
 
