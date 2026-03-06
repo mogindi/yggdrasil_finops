@@ -206,6 +206,46 @@ class OpenSearchPaymentsTests(unittest.TestCase):
         self.assertTrue(payload["already_exists"])
 
 
+
+    def test_get_balance_returns_default_payload_when_missing(self):
+        client = OpenSearchClient()
+        missing_exc = OpenSearchApiError(
+            "OpenSearch request failed (404) method=GET url=http://opensearch:9200/project-balances/_doc/proj-123: Not Found",
+            status_code=404,
+        )
+        with patch.object(client, "_http_json", side_effect=missing_exc):
+            payload = client.get_balance("proj-123")
+
+        self.assertFalse(payload["found"])
+        self.assertEqual(payload["_source"]["project_id"], "proj-123")
+        self.assertEqual(payload["_source"]["balance"], 0.0)
+
+    def test_search_project_payments_returns_empty_when_index_missing(self):
+        client = OpenSearchClient()
+        missing_exc = OpenSearchApiError(
+            "OpenSearch request failed (404) method=GET url=http://opensearch:9200/payments-*/_search: no such index [payments-project-proj-123]",
+            status_code=404,
+            body=json.dumps({"error": {"type": "index_not_found_exception", "reason": "no such index"}}),
+        )
+        with patch.object(client, "_http_json", side_effect=missing_exc):
+            payload = client.search_project_payments("proj-123")
+
+        self.assertEqual(payload["hits"]["hits"], [])
+        self.assertEqual(payload["hits"]["total"]["value"], 0)
+
+    def test_get_index_mapping_returns_not_found_envelope_when_missing(self):
+        client = OpenSearchClient()
+        missing_exc = OpenSearchApiError(
+            "OpenSearch request failed (404) method=GET url=http://opensearch:9200/payments-project-proj-123/_mapping: no such index",
+            status_code=404,
+        )
+        with patch.object(client, "_http_json", side_effect=missing_exc):
+            payload = client.get_index_mapping("project:proj-123")
+
+        self.assertFalse(payload["found"])
+        self.assertEqual(payload["index"], "payments-project-proj-123")
+        self.assertEqual(payload["mappings"], {})
+
     def test_upsert_balance_computes_cost_minus_payments(self):
         client = OpenSearchClient()
         with patch.object(client, "_http_json", return_value={"result": "updated"}) as http_mock:
