@@ -6,16 +6,25 @@ import logging
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib import error, parse, request
 from urllib.parse import parse_qs, urlparse
 
 from opensearch_client import OpenSearchApiError, OpenSearchClient, OpenSearchError
-from cloudkitty_client import CloudKittyClient, CloudKittyError, OpenStackAuthError, ProjectNotFoundError
 from currency import get_default_currency
 from startup_validation import describe_env, env_flag_enabled, print_env_resolution, validate_http_endpoint
 
 
 DEBUG_MODE = False
 LOGGER = logging.getLogger("payments_app")
+COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL", "http://localhost:8083").rstrip("/")
+
+
+class CostsServiceError(Exception):
+    pass
+
+
+class CostsServiceProjectNotFoundError(CostsServiceError):
+    pass
 
 
 def _payments_partition(project_id: str) -> str:
@@ -37,13 +46,9 @@ def _end_of_last_month(now: dt.datetime) -> dt.datetime:
 
 
 def _compute_project_balance(project_id: str, as_of: dt.datetime) -> dict:
-    costs_client = CloudKittyClient(debug=DEBUG_MODE)
     payments_client = OpenSearchClient(debug=DEBUG_MODE)
-
-    costs_client.ensure_project_exists(project_id)
-    project_created_at = costs_client.get_project_created_at(project_id)
-    start = (project_created_at or as_of).astimezone(dt.timezone.utc)
-    costs_total = costs_client.get_project_aggregate_for_range(project_id, start, as_of)
+    month_start = as_of.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    costs_total = _get_costs_total(project_id, month_start, as_of)
 
     payments_totals = payments_client.get_total_paid(project_id, paid_before=as_of.isoformat())
     payments_total = float(payments_totals.get("aggregations", {}).get("total_paid", {}).get("value", 0.0) or 0.0)
@@ -66,6 +71,29 @@ def _compute_project_balance(project_id: str, as_of: dt.datetime) -> dict:
             "as_of_date": as_of.isoformat(),
         },
     }
+
+
+def _get_costs_total(project_id: str, start: dt.datetime, end: dt.datetime) -> float:
+    query = parse.urlencode({"start": start.isoformat(), "end": end.isoformat(), "include_series": "false"})
+    url = f"{COSTS_SERVICE_URL}/api/projects/{parse.quote(project_id)}/costs?{query}"
+    req = request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with request.urlopen(req) as resp:
+            payload = json.loads(resp.read().decode("utf-8") or "{}")
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        if exc.code == 404:
+            try:
+                payload = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                payload = {}
+            raise CostsServiceProjectNotFoundError(payload.get("error") or f"Project '{project_id}' was not found") from exc
+        raise CostsServiceError(f"costs service returned {exc.code}: {body or exc.reason}") from exc
+    except error.URLError as exc:
+        reason = getattr(exc, "reason", str(exc))
+        raise CostsServiceError(f"costs service unavailable: {reason}") from exc
+
+    return float(payload.get("aggregate_cost_now", 0.0) or 0.0)
 
 
 class PaymentsHandler(BaseHTTPRequestHandler):
@@ -127,9 +155,9 @@ class PaymentsHandler(BaseHTTPRequestHandler):
                 effective_as_of = as_of or _end_of_last_month(dt.datetime.now(dt.timezone.utc))
                 try:
                     return self._json(_compute_project_balance(project_id, effective_as_of))
-                except ProjectNotFoundError as exc:
+                except CostsServiceProjectNotFoundError as exc:
                     return self._json({"error": str(exc)}, status=404)
-                except (OpenStackAuthError, CloudKittyError) as exc:
+                except CostsServiceError as exc:
                     return self._json({"error": str(exc)}, status=502)
             if len(parts) == 6 and parts[5] == "mapping":
                 return self._json(client.get_index_mapping(partition))
@@ -215,6 +243,13 @@ def run() -> None:
     opensearch_url, using_default = describe_env("OPENSEARCH_URL")
     print_env_resolution("OPENSEARCH_URL", opensearch_url, using_default)
     validate_http_endpoint("OPENSEARCH_URL", opensearch_url, health_path="/")
+
+    costs_service_url, costs_service_defaulted = describe_env("COSTS_SERVICE_URL", default="http://localhost:8083")
+    print_env_resolution("COSTS_SERVICE_URL", costs_service_url, costs_service_defaulted)
+    validate_http_endpoint("COSTS_SERVICE_URL", costs_service_url, health_path="/healthz")
+
+    global COSTS_SERVICE_URL
+    COSTS_SERVICE_URL = costs_service_url.rstrip("/")
 
     os_verify, os_verify_defaulted = describe_env("OS_VERIFY")
     print_env_resolution("OS_VERIFY", os_verify, os_verify_defaulted)
