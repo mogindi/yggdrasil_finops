@@ -60,7 +60,7 @@ class TestPaymentsBalanceErrorHandling:
 
     def test_returns_502_when_costs_service_is_unavailable(self):
         with patch.dict(os.environ, {"OPENSEARCH_URL": "http://opensearch:9200", "OS_VERIFY": "false"}, clear=False), \
-             patch("payments_app.OpenSearchClient", FakeOpenSearchClient), \
+             patch.object(payments_app, "OpenSearchClient", FakeOpenSearchClient), \
              patch("payments_app.request.urlopen", side_effect=URLError("connection refused")):
             status, body = self._request("GET", "/api/projects/proj-123/payments/balance")
 
@@ -78,7 +78,7 @@ class TestPaymentsBalanceErrorHandling:
             fp=missing_resp,
         )
         with patch.dict(os.environ, {"OPENSEARCH_URL": "http://opensearch:9200", "OS_VERIFY": "false"}, clear=False), \
-             patch("payments_app.OpenSearchClient", FakeOpenSearchClient), \
+             patch.object(payments_app, "OpenSearchClient", FakeOpenSearchClient), \
              patch("payments_app.request.urlopen", side_effect=missing_exc):
             status, body = self._request("GET", "/api/projects/proj-123/payments/balance")
 
@@ -86,6 +86,50 @@ class TestPaymentsBalanceErrorHandling:
         assert body["error"] == "Project 'proj-123' does not exist"
 
 
+
+
+
+    def test_balance_defaults_from_dates_to_2026_01_01_when_omitted(self):
+        captured = {}
+
+        def fake_compute(project_id, costs_from, costs_to, payments_from, payments_to):
+            captured["project_id"] = project_id
+            captured["costs_from"] = costs_from.isoformat()
+            captured["payments_from"] = payments_from.isoformat()
+            return {"ok": True}
+
+        with patch.dict(os.environ, {"OPENSEARCH_URL": "http://opensearch:9200", "OS_VERIFY": "false"}, clear=False), \
+             patch.object(payments_app, "OpenSearchClient", FakeOpenSearchClient), \
+             patch.object(payments_app, "_compute_project_balance", side_effect=fake_compute):
+            status, body = self._request("GET", "/api/projects/proj-123/payments/balance?costs_to_date=2026-02-15")
+
+        assert status == 200
+        assert body == {"ok": True}
+        assert captured["project_id"] == "proj-123"
+        assert captured["costs_from"] == "2026-01-01T00:00:00+00:00"
+        assert captured["payments_from"] == "2026-01-01T00:00:00+00:00"
+
+    def test_balance_defaults_from_dates_to_2026_01_01_with_as_of_date(self):
+        captured = {}
+
+        def fake_compute(project_id, costs_from, costs_to, payments_from, payments_to):
+            captured["costs_from"] = costs_from.isoformat()
+            captured["payments_from"] = payments_from.isoformat()
+            captured["costs_to"] = costs_to.isoformat()
+            captured["payments_to"] = payments_to.isoformat()
+            return {"ok": True}
+
+        with patch.dict(os.environ, {"OPENSEARCH_URL": "http://opensearch:9200", "OS_VERIFY": "false"}, clear=False), \
+             patch.object(payments_app, "OpenSearchClient", FakeOpenSearchClient), \
+             patch.object(payments_app, "_compute_project_balance", side_effect=fake_compute):
+            status, body = self._request("GET", "/api/projects/proj-123/payments/balance?as_of_date=2026-02-01")
+
+        assert status == 200
+        assert body == {"ok": True}
+        assert captured["costs_from"] == "2026-01-01T00:00:00+00:00"
+        assert captured["payments_from"] == "2026-01-01T00:00:00+00:00"
+        assert captured["costs_to"] == "2026-02-01T23:59:59+00:00"
+        assert captured["payments_to"] == "2026-02-01T23:59:59+00:00"
 
     def test_parse_iso_date_defaults_to_start_of_day_utc(self):
         parsed = payments_app._parse_iso_date_or_datetime("2026-01-01")
