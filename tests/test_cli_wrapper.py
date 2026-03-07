@@ -172,7 +172,22 @@ class CliWrapperTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         req = mocked.call_args.args[0]
         self.assertEqual(req.method, "GET")
-        self.assertTrue(req.full_url.endswith("/api/projects/proj_123/payments/balance"))
+        self.assertIn("/api/projects/proj_123/payments/balance?", req.full_url)
+
+
+    def test_payment_balance_get_defaults_from_dates_to_2026_01_01(self):
+        with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"found": True})) as mocked:
+            rc = yggdrasil_finops.main([
+                "payment",
+                "balance",
+                "--project-id",
+                "proj_123",
+            ])
+        self.assertEqual(rc, 0)
+        req = mocked.call_args.args[0]
+        self.assertEqual(req.method, "GET")
+        self.assertIn("costs_from_date=2026-01-01", req.full_url)
+        self.assertIn("payments_from_date=2026-01-01", req.full_url)
 
 
     def test_payment_balance_get_with_as_of_date_adds_query_string(self):
@@ -188,7 +203,9 @@ class CliWrapperTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         req = mocked.call_args.args[0]
         self.assertEqual(req.method, "GET")
-        self.assertTrue(req.full_url.endswith("/api/projects/proj_123/payments/balance?as_of_date=2026-02-01T00%3A00%3A00Z"))
+        self.assertIn("as_of_date=2026-02-01T00%3A00%3A00Z", req.full_url)
+        self.assertIn("costs_from_date=2026-01-01", req.full_url)
+        self.assertIn("payments_from_date=2026-01-01", req.full_url)
 
     def test_payment_balance_get_with_window_dates_adds_all_query_params(self):
         with patch("urllib.request.urlopen", return_value=FakeResponse(payload={"found": True})) as mocked:

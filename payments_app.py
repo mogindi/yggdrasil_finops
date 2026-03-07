@@ -18,6 +18,7 @@ DEBUG_MODE = False
 LOGGER = logging.getLogger("payments_app")
 COSTS_SERVICE_URL = os.environ.get("COSTS_SERVICE_URL", "http://localhost:8083").rstrip("/")
 DOCUMENT_GENERATOR_SERVICE_URL = os.environ.get("DOCUMENT_GENERATOR_SERVICE_URL", "http://localhost:8084").rstrip("/")
+DEFAULT_BALANCE_WINDOW_START = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
 
 
 class CostsServiceError(Exception):
@@ -232,10 +233,9 @@ class PaymentsHandler(BaseHTTPRequestHandler):
                 except ValueError:
                     return self._json({"error": "date values must be ISO8601 date or datetime (e.g. 2026-01-01 or 2026-01-01T12:00:00Z)"}, status=400)
                 try:
-                    onboarding_start = _get_customer_onboarding_start(project_id, now)
-                    effective_costs_from = costs_from or (_start_of_month(as_of) if as_of else onboarding_start)
+                    effective_costs_from = costs_from or DEFAULT_BALANCE_WINDOW_START
                     effective_costs_to = costs_to or as_of or _end_of_last_month(now)
-                    effective_payments_from = payments_from or onboarding_start
+                    effective_payments_from = payments_from or DEFAULT_BALANCE_WINDOW_START
                     effective_payments_to = payments_to or as_of or now
                     if effective_costs_from > effective_costs_to:
                         return self._json({"error": "costs_from_date must be before or equal to costs_to_date"}, status=400)

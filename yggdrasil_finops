@@ -11,6 +11,7 @@ from argparse import _SubParsersAction
 
 
 DEFAULT_BASE_URL = os.environ.get("YGGDRASIL_FINOPS_API_URL", "http://localhost:8082")
+DEFAULT_BALANCE_WINDOW_START = "2026-01-01"
 
 
 def _safe_default_currency() -> str:
@@ -164,9 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     payment_balance_get = payment_sub.add_parser("balance", help="Get project payment balance")
     _add_base_and_project_args(payment_balance_get)
-    payment_balance_get.add_argument("--costs-from-date", metavar="DATE", help="Optional ISO8601 date or datetime for costs lower boundary, e.g. 2026-01-01")
+    payment_balance_get.add_argument("--costs-from-date", default=DEFAULT_BALANCE_WINDOW_START, metavar="DATE", help="ISO8601 date or datetime for costs lower boundary (default: 2026-01-01), e.g. 2026-01-01")
     payment_balance_get.add_argument("--costs-to-date", metavar="DATE", help="Optional ISO8601 date or datetime for costs upper boundary, e.g. 2026-01-31")
-    payment_balance_get.add_argument("--payments-from-date", metavar="DATE", help="Optional ISO8601 date or datetime for payments lower boundary, e.g. 2026-01-01")
+    payment_balance_get.add_argument("--payments-from-date", default=DEFAULT_BALANCE_WINDOW_START, metavar="DATE", help="ISO8601 date or datetime for payments lower boundary (default: 2026-01-01), e.g. 2026-01-01")
     payment_balance_get.add_argument("--payments-to-date", metavar="DATE", help="Optional ISO8601 date or datetime for payments upper boundary, e.g. 2026-01-31")
     payment_balance_get.add_argument("--as-of-date", metavar="DATE", help="Deprecated alias for costs-to-date and payments-to-date")
 
